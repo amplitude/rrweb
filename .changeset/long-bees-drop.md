@@ -1,5 +1,5 @@
 ---
-"@amplitude/rrweb": patch
+'@amplitude/rrweb': patch
 ---
 
 External error
