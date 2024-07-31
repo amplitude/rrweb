@@ -10,7 +10,9 @@ import {
   MaskInputFn,
   KeepIframeSrcFn,
   ICanvas,
+  elementNode,
   serializedElementNodeWithId,
+  type mediaAttributes,
 } from './types';
 import {
   Mirror,
@@ -22,6 +24,7 @@ import {
   stringifyStylesheet,
   getInputType,
   toLowerCase,
+  extractFileExtension,
 } from './utils';
 
 let _id = 1;
@@ -310,6 +313,7 @@ export function needMaskingText(
   node: Node,
   maskTextClass: string | RegExp,
   maskTextSelector: string | null,
+  checkAncestors: boolean,
 ): boolean {
   try {
     const el: HTMLElement | null =
@@ -317,17 +321,21 @@ export function needMaskingText(
         ? (node as HTMLElement)
         : node.parentElement;
     if (el === null) return false;
-
     if (typeof maskTextClass === 'string') {
-      if (el.classList.contains(maskTextClass)) return true;
-      if (el.closest(`.${maskTextClass}`)) return true;
+      if (checkAncestors) {
+        if (el.closest(`.${maskTextClass}`)) return true;
+      } else {
+        if (el.classList.contains(maskTextClass)) return true;
+      }
     } else {
-      if (classMatchesRegex(el, maskTextClass, true)) return true;
+      if (classMatchesRegex(el, maskTextClass, checkAncestors)) return true;
     }
-
     if (maskTextSelector) {
-      if (el.matches(maskTextSelector)) return true;
-      if (el.closest(maskTextSelector)) return true;
+      if (checkAncestors) {
+        if (el.closest(maskTextSelector)) return true;
+      } else {
+        if (el.matches(maskTextSelector)) return true;
+      }
     }
   } catch (e) {
     //
@@ -426,8 +434,7 @@ function serializeNode(
     mirror: Mirror;
     blockClass: string | RegExp;
     blockSelector: string | null;
-    maskTextClass: string | RegExp;
-    maskTextSelector: string | null;
+    needsMask: boolean | undefined;
     inlineStylesheet: boolean;
     maskInputOptions: MaskInputOptions;
     maskTextFn: MaskTextFn | undefined;
@@ -447,8 +454,7 @@ function serializeNode(
     mirror,
     blockClass,
     blockSelector,
-    maskTextClass,
-    maskTextSelector,
+    needsMask,
     inlineStylesheet,
     maskInputOptions = {},
     maskTextFn,
@@ -500,8 +506,7 @@ function serializeNode(
       });
     case n.TEXT_NODE:
       return serializeTextNode(n as Text, {
-        maskTextClass,
-        maskTextSelector,
+        needsMask,
         maskTextFn,
         rootId,
       });
@@ -531,13 +536,12 @@ function getRootId(doc: Document, mirror: Mirror): number | undefined {
 function serializeTextNode(
   n: Text,
   options: {
-    maskTextClass: string | RegExp;
-    maskTextSelector: string | null;
+    needsMask: boolean | undefined;
     maskTextFn: MaskTextFn | undefined;
     rootId: number | undefined;
   },
 ): serializedNode {
-  const { maskTextClass, maskTextSelector, maskTextFn, rootId } = options;
+  const { needsMask, maskTextFn, rootId } = options;
   // The parent node may not be a html element which has a tagName attribute.
   // So just let it be undefined which is ok in this use case.
   const parentTagName = n.parentNode && (n.parentNode as HTMLElement).tagName;
@@ -568,12 +572,7 @@ function serializeTextNode(
   if (isScript) {
     textContent = 'SCRIPT_PLACEHOLDER';
   }
-  if (
-    !isStyle &&
-    !isScript &&
-    textContent &&
-    needMaskingText(n, maskTextClass, maskTextSelector)
-  ) {
+  if (!isStyle && !isScript && textContent && needsMask) {
     textContent = maskTextFn
       ? maskTextFn(textContent, n.parentElement)
       : textContent.replace(/[\S]/g, '*');
@@ -676,10 +675,9 @@ function serializeElementNode(
       attributes.type !== 'button' &&
       value
     ) {
-      const type = getInputType(n);
       attributes.value = maskInputValue({
         element: n,
-        type,
+        type: getInputType(n),
         tagName,
         value,
         maskInputOptions,
@@ -764,10 +762,15 @@ function serializeElementNode(
   }
   // media elements
   if (tagName === 'audio' || tagName === 'video') {
-    attributes.rr_mediaState = (n as HTMLMediaElement).paused
+    const mediaAttributes = attributes as mediaAttributes;
+    mediaAttributes.rr_mediaState = (n as HTMLMediaElement).paused
       ? 'paused'
       : 'played';
-    attributes.rr_mediaCurrentTime = (n as HTMLMediaElement).currentTime;
+    mediaAttributes.rr_mediaCurrentTime = (n as HTMLMediaElement).currentTime;
+    mediaAttributes.rr_mediaPlaybackRate = (n as HTMLMediaElement).playbackRate;
+    mediaAttributes.rr_mediaMuted = (n as HTMLMediaElement).muted;
+    mediaAttributes.rr_mediaLoop = (n as HTMLMediaElement).loop;
+    mediaAttributes.rr_mediaVolume = (n as HTMLMediaElement).volume;
   }
   // Scroll
   if (!newlyAddedElement) {
@@ -801,6 +804,13 @@ function serializeElementNode(
     delete attributes.src; // prevent auto loading
   }
 
+  let isCustomElement: true | undefined;
+  try {
+    if (customElements.get(tagName)) isCustomElement = true;
+  } catch (e) {
+    // In case old browsers don't support customElements
+  }
+
   return {
     type: NodeType.Element,
     tagName,
@@ -809,6 +819,7 @@ function serializeElementNode(
     isSVG: isSVGElement(n as Element) || undefined,
     needBlock,
     rootId,
+    isCustom: isCustomElement,
   };
 }
 
@@ -843,7 +854,7 @@ function slimDOMExcluded(
         (sn.tagName === 'link' &&
           sn.attributes.rel === 'prefetch' &&
           typeof sn.attributes.href === 'string' &&
-          sn.attributes.href.endsWith('.js')))
+          extractFileExtension(sn.attributes.href) === 'js'))
     ) {
       return true;
     } else if (
@@ -927,6 +938,7 @@ export function serializeNodeWithId(
     inlineStylesheet: boolean;
     newlyAddedElement?: boolean;
     maskInputOptions?: MaskInputOptions;
+    needsMask?: boolean;
     maskTextFn: MaskTextFn | undefined;
     maskInputFn: MaskInputFn | undefined;
     slimDOMOptions: SlimDOMOptions;
@@ -972,14 +984,29 @@ export function serializeNodeWithId(
     keepIframeSrcFn = () => false,
     newlyAddedElement = false,
   } = options;
+  let { needsMask } = options;
   let { preserveWhiteSpace = true } = options;
+
+  if (
+    !needsMask &&
+    n.childNodes // we can avoid the check on leaf elements, as masking is applied to child text nodes only
+  ) {
+    // perf: if needsMask = true, children won't also need to check
+    const checkAncestors = needsMask === undefined; // if false, we've already checked ancestors
+    needsMask = needMaskingText(
+      n as Element,
+      maskTextClass,
+      maskTextSelector,
+      checkAncestors,
+    );
+  }
+
   const _serializedNode = serializeNode(n, {
     doc,
     mirror,
     blockClass,
     blockSelector,
-    maskTextClass,
-    maskTextSelector,
+    needsMask,
     inlineStylesheet,
     maskInputOptions,
     maskTextFn,
@@ -1050,6 +1077,7 @@ export function serializeNodeWithId(
       mirror,
       blockClass,
       blockSelector,
+      needsMask,
       maskTextClass,
       maskTextSelector,
       skipChild,
@@ -1069,10 +1097,19 @@ export function serializeNodeWithId(
       stylesheetLoadTimeout,
       keepIframeSrcFn,
     };
-    for (const childN of Array.from(n.childNodes)) {
-      const serializedChildNode = serializeNodeWithId(childN, bypassOptions);
-      if (serializedChildNode) {
-        serializedNode.childNodes.push(serializedChildNode);
+
+    if (
+      serializedNode.type === NodeType.Element &&
+      serializedNode.tagName === 'textarea' &&
+      (serializedNode as elementNode).attributes.value !== undefined
+    ) {
+      // value parameter in DOM reflects the correct value, so ignore childNode
+    } else {
+      for (const childN of Array.from(n.childNodes)) {
+        const serializedChildNode = serializeNodeWithId(childN, bypassOptions);
+        if (serializedChildNode) {
+          serializedNode.childNodes.push(serializedChildNode);
+        }
       }
     }
 
@@ -1110,6 +1147,7 @@ export function serializeNodeWithId(
             mirror,
             blockClass,
             blockSelector,
+            needsMask,
             maskTextClass,
             maskTextSelector,
             skipChild: false,
@@ -1146,7 +1184,11 @@ export function serializeNodeWithId(
   if (
     serializedNode.type === NodeType.Element &&
     serializedNode.tagName === 'link' &&
-    serializedNode.attributes.rel === 'stylesheet'
+    typeof serializedNode.attributes.rel === 'string' &&
+    (serializedNode.attributes.rel === 'stylesheet' ||
+      (serializedNode.attributes.rel === 'preload' &&
+        typeof serializedNode.attributes.href === 'string' &&
+        extractFileExtension(serializedNode.attributes.href) === 'css'))
   ) {
     onceStylesheetLoaded(
       n as HTMLLinkElement,
@@ -1157,6 +1199,7 @@ export function serializeNodeWithId(
             mirror,
             blockClass,
             blockSelector,
+            needsMask,
             maskTextClass,
             maskTextSelector,
             skipChild: false,
