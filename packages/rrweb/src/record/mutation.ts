@@ -142,6 +142,7 @@ export default class MutationBuffer {
 
   private texts: textCursor[] = [];
   private attributes: attributeCursor[] = [];
+  private attributeMap = new WeakMap<Node, attributeCursor>();
   private removes: removedNodeMutation[] = [];
   private mapRemoves: Node[] = [];
 
@@ -189,6 +190,7 @@ export default class MutationBuffer {
   private shadowDomManager: observerParam['shadowDomManager'];
   private canvasManager: observerParam['canvasManager'];
   private processedNodeManager: observerParam['processedNodeManager'];
+  private unattachedDoc: HTMLDocument;
 
   public init(options: MutationBufferParam) {
     (
@@ -283,7 +285,11 @@ export default class MutationBuffer {
       return nextId;
     };
     const pushAdd = (n: Node) => {
-      if (!n.parentNode || !inDom(n)) {
+      if (
+        !n.parentNode ||
+        !inDom(n) ||
+        (n.parentNode as Element).tagName === 'TEXTAREA'
+      ) {
         return;
       }
       const parentId = isShadowRoot(n.parentNode)
@@ -433,10 +439,17 @@ export default class MutationBuffer {
 
     const payload = {
       texts: this.texts
-        .map((text) => ({
-          id: this.mirror.getId(text.node),
-          value: text.value,
-        }))
+        .map((text) => {
+          const n = text.node;
+          if ((n.parentNode as Element).tagName === 'TEXTAREA') {
+            // the node is being ignored as it isn't in the mirror, so shift mutation to attributes on parent textarea
+            this.genTextAreaValueMutation(n.parentNode as HTMLTextAreaElement);
+          }
+          return {
+            id: this.mirror.getId(n),
+            value: text.value,
+          };
+        })
         // no need to include them on added elements, as they have just been serialized with up to date attribubtes
         .filter((text) => !addedIds.has(text.id))
         // text mutation's id was not in the mirror map means the target node has been removed
@@ -485,6 +498,7 @@ export default class MutationBuffer {
     // reset
     this.texts = [];
     this.attributes = [];
+    this.attributeMap = new WeakMap<Node, attributeCursor>();
     this.removes = [];
     this.addedSet = new Set<Node>();
     this.movedSet = new Set<Node>();
@@ -492,6 +506,24 @@ export default class MutationBuffer {
     this.movedMap = {};
 
     this.mutationCb(payload);
+  };
+
+  private genTextAreaValueMutation = (textarea: HTMLTextAreaElement) => {
+    let item = this.attributeMap.get(textarea);
+    if (!item) {
+      item = {
+        node: textarea,
+        attributes: {},
+        styleDiff: {},
+        _unchangedStyles: {},
+      };
+      this.attributes.push(item);
+      this.attributeMap.set(textarea, item);
+    }
+    item.attributes.value = Array.from(
+      textarea.childNodes,
+      (cn) => cn.textContent || '',
+    ).join('');
   };
 
   private processMutation = (m: mutationRecord) => {
@@ -512,6 +544,7 @@ export default class MutationBuffer {
                 m.target,
                 this.maskTextClass,
                 this.maskTextSelector,
+                true, // checkAncestors
               ) && value
                 ? this.maskTextFn
                   ? this.maskTextFn(value, closestElementOfNode(m.target))
@@ -546,9 +579,7 @@ export default class MutationBuffer {
           return;
         }
 
-        let item: attributeCursor | undefined = this.attributes.find(
-          (a) => a.node === m.target,
-        );
+        let item = this.attributeMap.get(m.target);
         if (
           target.tagName === 'IFRAME' &&
           attributeName === 'src' &&
@@ -570,6 +601,7 @@ export default class MutationBuffer {
             _unchangedStyles: {},
           };
           this.attributes.push(item);
+          this.attributeMap.set(m.target, item);
         }
 
         // Keep this property on inputs that used to be password inputs
@@ -591,15 +623,17 @@ export default class MutationBuffer {
             value,
           );
           if (attributeName === 'style') {
-            let unattachedDoc;
-            try {
-              // avoid upsetting original document from a Content Security point of view
-              unattachedDoc = document.implementation.createHTMLDocument();
-            } catch (e) {
-              // fallback to more direct method
-              unattachedDoc = this.doc;
+            if (!this.unattachedDoc) {
+              try {
+                // avoid upsetting original document from a Content Security point of view
+                this.unattachedDoc =
+                  document.implementation.createHTMLDocument();
+              } catch (e) {
+                // fallback to more direct method
+                this.unattachedDoc = this.doc;
+              }
             }
-            const old = unattachedDoc.createElement('span');
+            const old = this.unattachedDoc.createElement('span');
             if (m.oldValue) {
               old.setAttribute('style', m.oldValue);
             }
@@ -636,6 +670,12 @@ export default class MutationBuffer {
          */
         if (isBlocked(m.target, this.blockClass, this.blockSelector, true))
           return;
+
+        if ((m.target as Element).tagName === 'TEXTAREA') {
+          // children would be ignored in genAdds as they aren't in the mirror
+          this.genTextAreaValueMutation(m.target as HTMLTextAreaElement);
+          return; // any removedNodes won't have been in mirror either
+        }
 
         m.addedNodes.forEach((n) => this.genAdds(n, m.target));
         m.removedNodes.forEach((n) => {

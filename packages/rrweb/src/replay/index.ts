@@ -1151,8 +1151,8 @@ export class Replayer {
                 this.lastMouseDownEvent = null;
               }
               this.mousePos = {
-                x: d.x,
-                y: d.y,
+                x: d.x || 0,
+                y: d.y || 0,
                 id: d.id,
                 debugData: d,
               };
@@ -1161,7 +1161,7 @@ export class Replayer {
                 // don't draw a trail as user has lifted finger and is placing at a new point
                 this.tailPositions.length = 0;
               }
-              this.moveAndHover(d.x, d.y, d.id, isSync, d);
+              this.moveAndHover(d.x || 0, d.y || 0, d.id, isSync, d);
               if (d.type === MouseInteractions.Click) {
                 /*
                  * don't want target.click() here as could trigger an iframe navigation
@@ -1554,6 +1554,8 @@ export class Replayer {
         const childNodeArray = Array.isArray(parent.childNodes)
           ? parent.childNodes
           : Array.from(parent.childNodes);
+        // This should be redundant now as we are either recording the value or the childNode, and not both
+        // keeping around for backwards compatibility with old bad double data, see
 
         // https://github.com/rrweb-io/rrweb/issues/745
         // parent is textarea, will only keep one child node as the value
@@ -1751,10 +1753,24 @@ export class Replayer {
                   // for safe
                 }
               }
-              (target as Element | RRElement).setAttribute(
-                attributeName,
-                value,
-              );
+              if (attributeName === 'value' && target.nodeName === 'TEXTAREA') {
+                // this may or may not have an effect on the value property (which is what is displayed)
+                // depending on whether the textarea has been modified by the user yet
+                // TODO: replaceChildNodes is not available in RRDom
+                const textarea = target as TNode;
+                textarea.childNodes.forEach((c) =>
+                  textarea.removeChild(c as TNode),
+                );
+                const tn = target.ownerDocument?.createTextNode(value);
+                if (tn) {
+                  textarea.appendChild(tn as TNode);
+                }
+              } else {
+                (target as Element | RRElement).setAttribute(
+                  attributeName,
+                  value,
+                );
+              }
             } catch (error) {
               this.warn(
                 'An error occurred may due to the checkout feature.',
