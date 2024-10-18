@@ -75,11 +75,11 @@ import {
 } from '../utils';
 import canvasMutation from './canvas';
 import { deserializeArg } from './canvas/deserialize-args';
-import { 
-  createPlayerService, 
-  createSpeedService,   
+import {
+  createPlayerService,
+  createSpeedService,
   type PlayerMachineState,
-  type SpeedMachineState, 
+  type SpeedMachineState,
 } from './machine';
 import { polyfill as smoothscrollPolyfill } from './smoothscroll';
 import getInjectStyleRules from './styles/inject-style';
