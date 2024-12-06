@@ -1,5 +1,5 @@
-import { NodeType } from '@amplitude/rrweb-snapshot';
 import {
+  NodeType,
   EventType,
   IncrementalSource,
   event,

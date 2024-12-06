@@ -1,37 +1,37 @@
 /**
  * @jest-environment jsdom
  */
-import {
-  Mirror as NodeMirror,
-  NodeType as RRNodeType,
-  createMirror,
-  serializedNodeWithId,
-} from '@amplitude/rrweb-snapshot';
-import type {
-  canvasMutationData,
-  styleSheetRuleData,
-} from '@amplitude/rrweb-types';
-import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as puppeteer from 'puppeteer';
 import { vi, MockInstance } from 'vitest';
+import { createMirror, Mirror as NodeMirror } from '@amplitude/rrweb-snapshot';
 import {
-  RRDocument,
-  RRMediaElement,
-  Mirror as RRNodeMirror,
   buildFromDom,
   getDefaultSN,
+  Mirror as RRNodeMirror,
+  RRDocument,
+  RRMediaElement,
   printRRDom,
 } from '../src';
 import {
-  ReplayerHandler,
   createOrGetNode,
   diff,
+  ReplayerHandler,
   nodeMatching,
   sameNodeType,
 } from '../src/diff';
 import type { IRRElement, IRRNode } from '../src/document';
+import type {
+  serializedNodeWithId,
+  canvasMutationData,
+  styleSheetRuleData,
+} from '@amplitude/rrweb-types';
+import {
+  NodeType as RRNodeType,
+  EventType,
+  IncrementalSource,
+} from '@amplitude/rrweb-types';
 
 const elementSn = {
   type: RRNodeType.Element,

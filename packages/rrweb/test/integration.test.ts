@@ -1,21 +1,21 @@
-import { NodeType, visitSnapshot } from '@amplitude/rrweb-snapshot';
-import { EventType, RecordPlugin, eventWithTime } from '@amplitude/rrweb-types';
 import * as fs from 'fs';
 import * as path from 'path';
 import type * as puppeteer from 'puppeteer';
-import type { recordOptions } from '../src/types';
 import { vi } from 'vitest';
 import {
-  ISuite,
   assertSnapshot,
-  generateRecordSnippet,
+  startServer,
   getServerURL,
   launchPuppeteer,
-  replaceLast,
-  startServer,
-  waitForIFrameLoad,
   waitForRAF,
+  waitForIFrameLoad,
+  replaceLast,
+  generateRecordSnippet,
+  ISuite,
 } from './utils';
+import type { recordOptions } from '../src/types';
+import { eventWithTime, NodeType, EventType } from '@amplitude/rrweb-types';
+import { visitSnapshot } from '@amplitude/rrweb-snapshot';
 
 describe('record integration tests', function (this: ISuite) {
   vi.setConfig({ testTimeout: 10_000 });
