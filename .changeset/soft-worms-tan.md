@@ -1,10 +1,10 @@
 ---
-"@rrweb/all": patch
-"rrdom-nodejs": patch
-"rrdom": patch
-"rrweb-snapshot": major
-"rrweb": patch
-"@rrweb/rrweb-plugin-canvas-webrtc-record": patch
+"@amplitude/rrweb-all": patch
+"@amplitude/rrdom-nodejs": patch
+"@amplitude/rrdom": patch
+"@amplitude/rrweb-snapshot": major
+"@amplitude/rrweb": patch
+"@amplitude/rrweb-plugin-canvas-webrtc-record": patch
 ---
 
 `NodeType` enum was moved from rrweb-snapshot to @rrweb/types
