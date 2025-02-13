@@ -5,7 +5,7 @@ import {
   NodeType,
   type elementNode,
   type legacyAttributes,
-} from '@rrweb/types';
+} from '@amplitude/rrweb-types';
 import { type tagMap, type BuildCache } from './types';
 import { isElement, Mirror, isNodeMetaEqual } from './utils';
 import postcss from 'postcss';

@@ -12,7 +12,7 @@ import type {
   BuildCache,
   textNode,
 } from '../src/types';
-import { NodeType } from '@rrweb/types';
+import { NodeType } from '@amplitude/rrweb-types';
 import { Window } from 'happy-dom';
 
 describe('css parser', () => {
