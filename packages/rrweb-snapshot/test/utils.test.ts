@@ -9,7 +9,10 @@ import {
   isNodeMetaEqual,
 } from '../src/utils';
 import { NodeType } from '@amplitude/rrweb-types';
-import type { serializedNode, serializedNodeWithId } from '@amplitude/rrweb-types';
+import type {
+  serializedNode,
+  serializedNodeWithId,
+} from '@amplitude/rrweb-types';
 
 describe('utils', () => {
   describe('isNodeMetaEqual()', () => {

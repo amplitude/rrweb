@@ -11,7 +11,11 @@ import type {
   IMirror,
 } from '@amplitude/rrweb-types';
 import type { Mirror, SlimDOMOptions } from '@amplitude/rrweb-snapshot';
-import { isShadowRoot, IGNORED_NODE, classMatchesRegex } from '@amplitude/rrweb-snapshot';
+import {
+  isShadowRoot,
+  IGNORED_NODE,
+  classMatchesRegex,
+} from '@amplitude/rrweb-snapshot';
 import { RRNode, RRIFrameElement, BaseRRNode } from '@amplitude/rrdom';
 import dom from '@amplitude/rrweb-utils';
 

@@ -1,6 +1,4 @@
-import {
-  type Mirror as NodeMirror,
-} from '@amplitude/rrweb-snapshot';
+import { type Mirror as NodeMirror } from '@amplitude/rrweb-snapshot';
 import { NodeType as NodeType_2 } from '@amplitude/rrweb-types';
 import type {
   canvasEventWithTime,
