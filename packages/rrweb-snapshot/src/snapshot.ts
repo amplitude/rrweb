@@ -407,6 +407,7 @@ function serializeNode(
      */
     newlyAddedElement?: boolean;
     cssCaptured?: boolean;
+    applyBackgroundColorToBlockedElements?: boolean;
   },
 ): serializedNode | false {
   const {
@@ -425,6 +426,7 @@ function serializeNode(
     keepIframeSrcFn,
     newlyAddedElement = false,
     cssCaptured = false,
+    applyBackgroundColorToBlockedElements = false,
   } = options;
   // Only record root id when document object is not the base document
   const rootId = getRootId(doc, mirror);
@@ -464,6 +466,7 @@ function serializeNode(
         keepIframeSrcFn,
         newlyAddedElement,
         rootId,
+        applyBackgroundColorToBlockedElements,
       });
     case n.TEXT_NODE:
       return serializeTextNode(n as Text, {
@@ -557,6 +560,7 @@ function serializeElementNode(
      */
     newlyAddedElement?: boolean;
     rootId: number | undefined;
+    applyBackgroundColorToBlockedElements?: boolean;
   },
 ): serializedNode | false {
   const {
@@ -931,6 +935,7 @@ export function serializeNodeWithId(
     ) => unknown;
     stylesheetLoadTimeout?: number;
     cssCaptured?: boolean;
+    applyBackgroundColorToBlockedElements?: boolean;
   },
 ): serializedNodeWithId | null {
   const {
@@ -957,6 +962,7 @@ export function serializeNodeWithId(
     keepIframeSrcFn = () => false,
     newlyAddedElement = false,
     cssCaptured = false,
+    applyBackgroundColorToBlockedElements = false,
   } = options;
   let { needsMask } = options;
   let { preserveWhiteSpace = true } = options;
@@ -988,6 +994,7 @@ export function serializeNodeWithId(
     keepIframeSrcFn,
     newlyAddedElement,
     cssCaptured,
+    applyBackgroundColorToBlockedElements,
   });
   if (!_serializedNode) {
     // TODO: dev only
@@ -1241,6 +1248,7 @@ function snapshot(
     ) => unknown;
     stylesheetLoadTimeout?: number;
     keepIframeSrcFn?: KeepIframeSrcFn;
+    applyBackgroundColorToBlockedElements?: boolean;
   },
 ): serializedNodeWithId | null {
   const {
@@ -1264,6 +1272,7 @@ function snapshot(
     onStylesheetLoad,
     stylesheetLoadTimeout,
     keepIframeSrcFn = () => false,
+    applyBackgroundColorToBlockedElements = false,
   } = options || {};
   const maskInputOptions: MaskInputOptions =
     maskAllInputs === true
@@ -1332,6 +1341,7 @@ function snapshot(
     stylesheetLoadTimeout,
     keepIframeSrcFn,
     newlyAddedElement: false,
+    applyBackgroundColorToBlockedElements,
   });
 }
 
