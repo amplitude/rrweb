@@ -11,7 +11,10 @@ import snapshot, {
 import { elementNode, serializedNodeWithId } from '../src/types';
 import { Mirror, absolutifyURLs } from '../src/utils';
 
-const serializeNode = (node: Node): serializedNodeWithId | null => {
+const serializeNode = (
+  node: Node,
+  applyBackgroundColorToBlockedElements: boolean = false,
+): serializedNodeWithId | null => {
   return serializeNodeWithId(node, {
     doc: document,
     mirror: new Mirror(),
@@ -24,6 +27,7 @@ const serializeNode = (node: Node): serializedNodeWithId | null => {
     maskTextFn: undefined,
     maskInputFn: undefined,
     slimDOMOptions: {},
+    applyBackgroundColorToBlockedElements,
   });
 };
 
@@ -150,6 +154,28 @@ describe('isBlockedElement()', () => {
     expect(
       subject('<div data-rr-block />', { blockSelector: '[data-rr-block]' }),
     ).toEqual(true);
+  });
+
+  it('adds background color attribute when element is blocked and applyBackgroundColorToBlockedElements is true', () => {
+    const applyBackgroundColorToBlockedElements = true;
+    const html = '<div class="rr-block">Blocked content</div>';
+    const el = render(html);
+    const serialized = serializeNode(el, applyBackgroundColorToBlockedElements);
+    expect(subject(html)).toEqual(true);
+    expect(serialized).toMatchObject({
+      attributes: {
+        rr_background_color: 'lightgrey',
+      },
+    });
+  });
+
+  it('does not add background color attribute when element is blocked and applyBackgroundColorToBlockedElements is false', () => {
+    const applyBackgroundColorToBlockedElements = false;
+    const html = '<div class="rr-block">Blocked content</div>';
+    const el = render(html);
+    const serialized = serializeNode(el, applyBackgroundColorToBlockedElements);
+    expect(subject(html)).toEqual(true);
+    expect(serialized.attributes).not.toHaveProperty('rr_background_color');
   });
 });
 

@@ -33,6 +33,8 @@ import {
 } from './utils';
 import dom from '@amplitude/rrweb-utils';
 
+const _DEFAULT_BLOCKED_ELEMENT_BACKGROUND_COLOR = 'lightgrey';
+
 let _id = 1;
 const tagNameRegex = new RegExp('[^a-z0-9-_:]');
 
@@ -576,6 +578,7 @@ function serializeElementNode(
     keepIframeSrcFn,
     newlyAddedElement = false,
     rootId,
+    applyBackgroundColorToBlockedElements = false,
   } = options;
   const needBlock = _isBlockedElement(n, blockClass, blockSelector);
   const tagName = getValidTagName(n);
@@ -768,6 +771,9 @@ function serializeElementNode(
       class: attributes.class,
       rr_width: `${width}px`,
       rr_height: `${height}px`,
+      ...(applyBackgroundColorToBlockedElements
+        ? { rr_background_color: _DEFAULT_BLOCKED_ELEMENT_BACKGROUND_COLOR }
+        : {}),
     };
   }
   // iframe
