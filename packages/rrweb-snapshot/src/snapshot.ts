@@ -1081,6 +1081,7 @@ export function serializeNodeWithId(
       stylesheetLoadTimeout,
       keepIframeSrcFn,
       cssCaptured: false,
+      applyBackgroundColorToBlockedElements,
     };
 
     if (
