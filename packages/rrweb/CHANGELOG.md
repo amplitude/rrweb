@@ -1,5 +1,17 @@
 # rrweb
 
+## 2.0.0-alpha.31
+
+### Patch Changes
+
+- [#57](https://github.com/amplitude/rrweb/pull/57) [`bece5b0`](https://github.com/amplitude/rrweb/commit/bece5b0e941970779d9b76fbcf376c96f15875bb) Thanks [@lewgordon-amplitude](https://github.com/lewgordon-amplitude)! - adds default rrweb styles to shadow roots
+
+- Updated dependencies []:
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.31
+  - @amplitude/rrdom@2.0.0-alpha.31
+  - @amplitude/rrweb-types@2.0.0-alpha.31
+  - @amplitude/rrweb-utils@2.0.0-alpha.31
+
 ## 2.0.0-alpha.30
 
 ### Patch Changes
