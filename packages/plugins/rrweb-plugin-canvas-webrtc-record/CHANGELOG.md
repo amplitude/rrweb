@@ -1,5 +1,12 @@
 # @amplitude/rrweb-plugin-canvas-webrtc-record
 
+## 2.0.0-alpha.31
+
+### Patch Changes
+
+- Updated dependencies [[`bece5b0`](https://github.com/amplitude/rrweb/commit/bece5b0e941970779d9b76fbcf376c96f15875bb)]:
+  - @amplitude/rrweb@2.0.0-alpha.31
+
 ## 2.0.0-alpha.30
 
 ### Patch Changes

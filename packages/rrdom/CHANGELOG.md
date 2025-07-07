@@ -1,5 +1,12 @@
 # rrdom
 
+## 2.0.0-alpha.31
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.31
+
 ## 2.0.0-alpha.30
 
 ### Patch Changes
