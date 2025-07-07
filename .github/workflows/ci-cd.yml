@@ -22,11 +22,10 @@ jobs:
         with:
           node-version: lts/*
 
-      - name: Clean before install
-        run: yarn cache clean
-
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_DOWNLOAD_BASE_URL: 'https://storage.googleapis.com/chrome-for-testing-public'
 
       - name: Build Project
         run: NODE_OPTIONS='--max-old-space-size=4096' yarn build:all

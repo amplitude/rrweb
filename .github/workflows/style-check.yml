@@ -17,10 +17,10 @@ jobs:
         with:
           node-version: lts/*
           cache: 'yarn'
-      - name: Clean before install
-        run: yarn cache clean
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
       - name: Build Packages
         run: NODE_OPTIONS='--max-old-space-size=4096' yarn build:all
       - name: Eslint Check
@@ -68,6 +68,8 @@ jobs:
           cache: 'yarn'
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
       - name: Prettier Check
         run: yarn prettier --check '**/*.{ts,md}'
 
@@ -88,6 +90,8 @@ jobs:
           cache: 'yarn'
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
       - name: Prettify Code
         run: yarn prettier --write '**/*.{ts,md}'
       - name: Commit Changes

@@ -19,12 +19,11 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: lts/*
-      
-      - name: Clean before install
-        run: yarn cache clean
 
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
