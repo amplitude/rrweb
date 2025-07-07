@@ -17,8 +17,6 @@ jobs:
         with:
           node-version: lts/*
           cache: 'yarn'
-      - name: Clean before install
-        run: yarn cache clean
       - name: Install Dependencies
         run: yarn install --frozen-lockfile
       - name: Build Packages
