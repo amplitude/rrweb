@@ -1,5 +1,15 @@
 # rrweb
 
+## 2.0.0-alpha.32
+
+### Patch Changes
+
+- Updated dependencies [[`75e9337`](https://github.com/amplitude/rrweb/commit/75e9337580b3a829838ea58e0269d612b3a8100d)]:
+  - @amplitude/rrweb-utils@2.0.0-alpha.32
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.32
+  - @amplitude/rrdom@2.0.0-alpha.32
+  - @amplitude/rrweb-types@2.0.0-alpha.32
+
 ## 2.0.0-alpha.31
 
 ### Patch Changes

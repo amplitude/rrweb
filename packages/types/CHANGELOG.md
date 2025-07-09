@@ -1,5 +1,7 @@
 # @rrweb/types
 
+## 2.0.0-alpha.32
+
 ## 2.0.0-alpha.31
 
 ## 2.0.0-alpha.30

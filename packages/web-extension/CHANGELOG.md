@@ -1,5 +1,13 @@
 # @rrweb/web-extension
 
+## 2.0.0-alpha.32
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @amplitude/rrweb@2.0.0-alpha.32
+  - @amplitude/rrweb-player@2.0.0-alpha.32
+
 ## 2.0.0-alpha.31
 
 ### Patch Changes
