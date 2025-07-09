@@ -1,5 +1,11 @@
 # @amplitude/rrweb-utils
 
+## 2.0.0-alpha.32
+
+### Patch Changes
+
+- [#61](https://github.com/amplitude/rrweb/pull/61) [`75e9337`](https://github.com/amplitude/rrweb/commit/75e9337580b3a829838ea58e0269d612b3a8100d) Thanks [@jxiwang](https://github.com/jxiwang)! - fix: much better zone detection
+
 ## 2.0.0-alpha.31
 
 ## 2.0.0-alpha.30

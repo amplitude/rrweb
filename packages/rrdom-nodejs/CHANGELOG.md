@@ -1,5 +1,13 @@
 # rrdom-nodejs
 
+## 2.0.0-alpha.32
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @amplitude/rrdom@2.0.0-alpha.32
+  - @amplitude/rrweb-types@2.0.0-alpha.32
+
 ## 2.0.0-alpha.31
 
 ### Patch Changes
