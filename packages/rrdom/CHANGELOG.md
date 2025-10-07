@@ -1,5 +1,12 @@
 # rrdom
 
+## 2.0.0-alpha.33
+
+### Patch Changes
+
+- Updated dependencies [[`ffd5f03`](https://github.com/amplitude/rrweb/commit/ffd5f0396cdf1605ed80fe9a7958f4c1154a6017)]:
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.33
+
 ## 2.0.0-alpha.32
 
 ### Patch Changes

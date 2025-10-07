@@ -1,5 +1,11 @@
 # rrweb-snapshot
 
+## 2.0.0-alpha.33
+
+### Patch Changes
+
+- [#63](https://github.com/amplitude/rrweb/pull/63) [`ffd5f03`](https://github.com/amplitude/rrweb/commit/ffd5f0396cdf1605ed80fe9a7958f4c1154a6017) Thanks [@jxiwang](https://github.com/jxiwang)! - fix: skip invalid custom element creation
+
 ## 2.0.0-alpha.32
 
 ## 2.0.0-alpha.31
