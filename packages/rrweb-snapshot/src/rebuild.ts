@@ -56,7 +56,6 @@ const tagMap: tagMap = {
 function getTagName(n: elementNode): string {
   let tagName = tagMap[n.tagName] ? tagMap[n.tagName] : n.tagName;
   if (tagName === 'link' && n.attributes._cssText) {
-    console.log("link is not a valid custom element name, build as style instead");
     tagName = 'style';
   }
 
