@@ -150,6 +150,61 @@ describe('rebuild', function () {
     });
   });
 
+  describe('customElementExclusions', function () {
+    it('should not define custom elements for excluded tag names', function () {
+      const spy = vi.spyOn(customElements, 'define');
+
+      const node = buildNodeWithSN(
+        {
+          id: 1,
+          tagName: 'webview',
+          type: NodeType.Element,
+          isCustom: true,
+          attributes: {},
+          childNodes: [],
+        },
+        {
+          doc: document,
+          mirror,
+          hackCss: false,
+          cache,
+        },
+      ) as HTMLElement;
+
+      expect(node.tagName.toLowerCase()).toBe('webview');
+      expect(spy).not.toHaveBeenCalledWith('webview', expect.anything());
+
+      spy.mockRestore();
+    });
+
+    it('should still define custom elements for non-excluded tag names', function () {
+      const customTagName = 'my-custom-element';
+      const spy = vi.spyOn(customElements, 'define');
+
+      const node = buildNodeWithSN(
+        {
+          id: 1,
+          tagName: customTagName,
+          type: NodeType.Element,
+          isCustom: true,
+          attributes: {},
+          childNodes: [],
+        },
+        {
+          doc: document,
+          mirror,
+          hackCss: false,
+          cache,
+        },
+      ) as HTMLElement;
+
+      expect(node.tagName.toLowerCase()).toBe(customTagName);
+      expect(spy).toHaveBeenCalledWith(customTagName, expect.anything());
+
+      spy.mockRestore();
+    });
+  });
+
   describe('add hover class to hover selector related rules', function () {
     it('will do nothing to css text without :hover', () => {
       const cssText = 'body { color: white }';

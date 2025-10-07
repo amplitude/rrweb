@@ -10,6 +10,9 @@ import { type tagMap, type BuildCache } from './types';
 import { isElement, Mirror, isNodeMetaEqual } from './utils';
 import postcss from 'postcss';
 
+// Tag names that should not be defined as custom elements
+const customElementExclusions = ['webview'];
+
 const tagMap: tagMap = {
   script: 'noscript',
   // camel case svg element tag names
@@ -55,6 +58,7 @@ function getTagName(n: elementNode): string {
   if (tagName === 'link' && n.attributes._cssText) {
     tagName = 'style';
   }
+
   return tagName;
 }
 
@@ -185,7 +189,9 @@ function buildNode(
           // If the browser supports custom elements
           doc.defaultView?.customElements &&
           // If the custom element hasn't been defined yet
-          !doc.defaultView.customElements.get(n.tagName)
+          !doc.defaultView.customElements.get(n.tagName) &&
+          // If the tag is not in the exclusion list
+          !customElementExclusions.includes(n.tagName)
         )
           doc.defaultView.customElements.define(
             n.tagName,
