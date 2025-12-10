@@ -1,6 +1,6 @@
 name: Code Style Check
 
-on: [push, pull_request_target]
+on: [push, pull_request]
 
 jobs:
   eslint_check_upload:
@@ -39,7 +39,7 @@ jobs:
 
   annotation:
     # Skip the annotation action in push events
-    if: github.event_name == 'pull_request_target'
+    if: github.event_name == 'pull_request'
     permissions:
       checks: write
     needs: eslint_check_upload
