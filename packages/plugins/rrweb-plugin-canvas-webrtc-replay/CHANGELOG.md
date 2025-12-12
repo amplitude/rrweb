@@ -1,5 +1,12 @@
 # @amplitude/rrweb-plugin-canvas-webrtc-replay
 
+## 2.0.0-alpha.34
+
+### Patch Changes
+
+- Updated dependencies [[`d6028a2`](https://github.com/amplitude/rrweb/commit/d6028a263aa64ba00122ca60f8b67431f4bd031f)]:
+  - @amplitude/rrweb@2.0.0-alpha.34
+
 ## 2.0.0-alpha.33
 
 ### Patch Changes
