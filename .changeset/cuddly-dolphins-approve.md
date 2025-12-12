@@ -1,10 +1,10 @@
 ---
-"@rrweb/all": patch
-"@rrweb/packer": patch
-"@rrweb/record": patch
-"rrweb-snapshot": patch
-"rrweb": patch
-"@rrweb/web-extension": patch
+"@amplitude/rrweb-all": patch
+"@amplitude/rrweb-packer": patch
+"@amplitude/rrweb-record": patch
+"@amplitude/rrweb-snapshot": patch
+"@amplitude/rrweb": patch
+"@amplitude/rrweb-web-extension": patch
 ---
 
 Drop base64 inlined worker source from all bundles
