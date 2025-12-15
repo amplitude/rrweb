@@ -20,6 +20,10 @@
   },
   "author": "Amplitude Inc",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amplitude/rrweb.git"
+  },
   "devDependencies": {
     "@amplitude/rrweb": "^2.0.0-alpha.34",
     "@types/fs-extra": "11.0.1",
