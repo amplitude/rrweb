@@ -1,15 +1,19 @@
-import _Player from './Player.svelte';
+import PlayerComponent from './Player.svelte';
 import type { RRwebPlayerOptions } from './types';
-export class Player extends _Player {
+import { asClassComponent } from 'svelte/legacy';
+import '@amplitude/rrweb-replay/dist/style.css';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const LegacyPlayer = asClassComponent(PlayerComponent as any);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class Player extends (LegacyPlayer as unknown as { new (o: any): any }) {
   constructor(
-    options: {
-      // for compatibility
-      data?: RRwebPlayerOptions['props'];
-    } & RRwebPlayerOptions,
+    options: { data?: RRwebPlayerOptions['props'] } & RRwebPlayerOptions,
   ) {
     super({
       target: options.target,
-      props: options.data || options.props,
+      props: options.data ?? options.props,
     });
   }
 }
