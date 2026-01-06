@@ -439,17 +439,23 @@
         bind:this={progress}
         on:click={handleProgressClick}
         on:keydown={handleProgressKeydown}
+        role="slider"
+        aria-label="Progress bar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={parseFloat(percentage)}
+        tabindex="0"
       >
         <div
           class="rr-progress__step"
           style="width: {percentage}"
-        />
+        ></div>
         {#each inactivePeriods as period}
           <div
             title={period.name}
             style="width: {period.width};height: 4px;position: absolute;background: {period.background};left:
             {period.position};"
-          />
+          ></div>
         {/each}
         {#each customEvents as event}
           <div
@@ -457,10 +463,10 @@
             style="width: 10px;height: 5px;position: absolute;top:
             2px;transform: translate(-50%, -50%);background: {event.background};left:
             {event.position};"
-          />
+          ></div>
         {/each}
 
-        <div class="rr-progress__handler" style="left: {percentage}" />
+        <div class="rr-progress__handler" style="left: {percentage}"></div>
       </div>
       <span class="rr-timeline__time">{formatTime(meta.totalTime)}</span>
     </div>
@@ -475,6 +481,7 @@
             xmlns:xlink="http://www.w3.org/1999/xlink"
             width="16"
             height="16"
+            aria-label="Play"
           >
             <path
               d="M682.65984 128q53.00224 0 90.50112 37.49888t37.49888 90.50112l0
@@ -502,6 +509,7 @@
             xmlns:xlink="http://www.w3.org/1999/xlink"
             width="16"
             height="16"
+            aria-label="Pause"
           >
             <path
               d="M170.65984 896l0-768 640 384zM644.66944
@@ -525,7 +533,7 @@
         disabled={speedState === 'skipping'}
         label="skip inactive"
       />
-      <button on:click={() => dispatch('fullscreen')}>
+      <button on:click={() => dispatch('fullscreen')} aria-label="Fullscreen">
         <svg
           class="icon"
           viewBox="0 0 1024 1024"

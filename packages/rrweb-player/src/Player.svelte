@@ -195,8 +195,6 @@
 </script>
 
 <style global>
-  @import '@amplitude/rrweb-replay/dist/style.css';
-
   .rr-player {
     position: relative;
     background: white;
@@ -209,7 +207,7 @@
     overflow: hidden;
   }
 
-  .replayer-wrapper {
+  :global(.replayer-wrapper) {
     float: left;
     clear: both;
     transform-origin: top left;
@@ -217,13 +215,13 @@
     top: 50%;
   }
 
-  .replayer-wrapper > iframe {
+  :global(.replayer-wrapper > iframe) {
     border: none;
   }
 </style>
 
 <div class="rr-player" bind:this={player} style={playerStyle}>
-  <div class="rr-player__frame" bind:this={frame} {style} />
+  <div class="rr-player__frame" bind:this={frame} {style}></div>
   {#if replayer}
     <Controller
       bind:this={controller}

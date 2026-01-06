@@ -74,6 +74,6 @@
 
 <div class="switch" class:disabled>
   <input type="checkbox" {id} bind:checked {disabled} />
-  <label for={id} />
+  <label for={id}></label>
   <span class="label">{label}</span>
 </div>
