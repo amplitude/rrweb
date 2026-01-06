@@ -1,5 +1,14 @@
 # @amplitude/rrweb-plugin-sequential-id-replay
 
+## 2.0.0-alpha.35
+
+### Patch Changes
+
+- [#73](https://github.com/amplitude/rrweb/pull/73) [`b2a7533`](https://github.com/amplitude/rrweb/commit/b2a75335eabe17a6e08aae68307fcd29e356e717) Thanks [@lewgordon-amplitude](https://github.com/lewgordon-amplitude)! - Upgrade vite from ^6.0.1 to ^6 across all packages. Vite 6.0.1 had a bug causing parser errors with CSS imports in TypeScript files, which is fixed in Vite 6.3.0+. Also fixed Svelte component issues (self-closing tags, ARIA attributes) and moved CSS import to main.ts to preserve runtime-generated classes.
+
+- Updated dependencies [[`b2a7533`](https://github.com/amplitude/rrweb/commit/b2a75335eabe17a6e08aae68307fcd29e356e717)]:
+  - @amplitude/rrweb@2.0.0-alpha.35
+
 ## 2.0.0-alpha.34
 
 ### Patch Changes
