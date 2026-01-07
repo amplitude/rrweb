@@ -24,4 +24,3 @@ import { record, replay, pack, unpack } from '@rrweb/all';
 ```
 
 See the [guide](../../guide.md) for more info on rrweb.
-

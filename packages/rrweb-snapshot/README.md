@@ -38,4 +38,3 @@ There are several things will be done during rebuild:
 #### buildNodeWithSN
 
 `buildNodeWithSN` will build DOM from serialized node and store serialized information in the `mirror.getMeta(node)`.
-
