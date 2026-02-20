@@ -35,6 +35,7 @@ import {
   type PlayerMachineState,
   type SpeedMachineState,
 } from './machine';
+import { buildCheckpointIndex } from './checkpoint-index';
 import type { playerConfig, missingNodeMap } from '../types';
 import {
   NodeType,
@@ -342,20 +343,23 @@ export class Replayer {
     const timer = new Timer([], {
       speed: this.config.speed,
     });
+    const sortedEvents = events
+      .map((e) => {
+        if (config && config.unpackFn) {
+          return config.unpackFn(e as string);
+        }
+        return e as eventWithTime;
+      })
+      .sort((a1, a2) => a1.timestamp - a2.timestamp);
+    const checkpointIndex = buildCheckpointIndex(sortedEvents);
     this.service = createPlayerService(
       {
-        events: events
-          .map((e) => {
-            if (config && config.unpackFn) {
-              return config.unpackFn(e as string);
-            }
-            return e as eventWithTime;
-          })
-          .sort((a1, a2) => a1.timestamp - a2.timestamp),
+        events: sortedEvents,
         timer,
         timeOffset: 0,
         baselineTime: 0,
         lastPlayedEvent: null,
+        checkpointIndex,
       },
       {
         getCastFn: this.getCastFn,
