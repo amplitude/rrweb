@@ -243,7 +243,11 @@ export function createPlayerService(
 
             let end = events.length - 1;
             if (!events[end] || events[end].timestamp <= event.timestamp) {
-              // fast track
+              // Fast track: append at end.
+              // Check if the last event is the same object (duplicate).
+              if (events[end] === event) {
+                return { ...ctx, events };
+              }
               events.push(event);
             } else {
               let insertionIndex = -1;
@@ -259,6 +263,21 @@ export function createPlayerService(
               if (insertionIndex === -1) {
                 insertionIndex = start;
               }
+
+              // Deduplicate: scan neighbors at the same timestamp for
+              // the same object reference. This is O(k) where k is the
+              // number of events at this exact millisecond.
+              for (let i = insertionIndex - 1; i >= 0 && events[i].timestamp === event.timestamp; i--) {
+                if (events[i] === event) {
+                  return { ...ctx, events };
+                }
+              }
+              for (let i = insertionIndex; i < events.length && events[i].timestamp === event.timestamp; i++) {
+                if (events[i] === event) {
+                  return { ...ctx, events };
+                }
+              }
+
               events.splice(insertionIndex, 0, event);
             }
 
