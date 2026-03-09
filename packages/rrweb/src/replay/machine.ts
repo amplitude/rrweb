@@ -14,6 +14,36 @@ import {
 } from '@amplitude/rrweb-types';
 import { Timer, addDelay } from './timer';
 
+/**
+ * Check whether an existing event in the array is a duplicate of the
+ * incoming event. Uses a two-tier strategy:
+ *
+ * 1. Reference equality — same object instance, cheapest check.
+ * 2. If timestamp and type match, fall back to JSON.stringify to catch
+ *    structurally identical events with different references. This is
+ *    rare in practice — two events seldom share the exact same
+ *    millisecond timestamp AND event type.
+ */
+function isDuplicateEvent(
+  existing: eventWithTime,
+  incoming: eventWithTime,
+): boolean {
+  // Tier 1: same object reference
+  if (existing === incoming) {
+    return true;
+  }
+
+  // Tier 2: same timestamp + type → expensive structural comparison
+  if (
+    existing.timestamp === incoming.timestamp &&
+    existing.type === incoming.type
+  ) {
+    return JSON.stringify(existing) === JSON.stringify(incoming);
+  }
+
+  return false;
+}
+
 export type PlayerContext = {
   events: eventWithTime[];
   timer: Timer;
@@ -244,8 +274,8 @@ export function createPlayerService(
             let end = events.length - 1;
             if (!events[end] || events[end].timestamp <= event.timestamp) {
               // Fast track: append at end.
-              // Check if the last event is the same object (duplicate).
-              if (events[end] === event) {
+              // Deduplicate against the last event before appending.
+              if (events[end] && isDuplicateEvent(events[end], event)) {
                 return { ...ctx, events };
               }
               events.push(event);
@@ -264,24 +294,16 @@ export function createPlayerService(
                 insertionIndex = start;
               }
 
-              // Deduplicate: scan neighbors at the same timestamp for
-              // the same object reference. This is O(k) where k is the
-              // number of events at this exact millisecond.
-              for (
-                let i = insertionIndex - 1;
-                i >= 0 && events[i].timestamp === event.timestamp;
-                i--
-              ) {
-                if (events[i] === event) {
+              // Deduplicate: scan neighbors at the same timestamp.
+              // This is O(k) where k is the number of events at this
+              // exact millisecond (usually 1-3).
+              for (let i = insertionIndex - 1; i >= 0 && events[i].timestamp === event.timestamp; i--) {
+                if (isDuplicateEvent(events[i], event)) {
                   return { ...ctx, events };
                 }
               }
-              for (
-                let i = insertionIndex;
-                i < events.length && events[i].timestamp === event.timestamp;
-                i++
-              ) {
-                if (events[i] === event) {
+              for (let i = insertionIndex; i < events.length && events[i].timestamp === event.timestamp; i++) {
+                if (isDuplicateEvent(events[i], event)) {
                   return { ...ctx, events };
                 }
               }
