@@ -297,12 +297,20 @@ export function createPlayerService(
               // Deduplicate: scan neighbors at the same timestamp.
               // This is O(k) where k is the number of events at this
               // exact millisecond (usually 1-3).
-              for (let i = insertionIndex - 1; i >= 0 && events[i].timestamp === event.timestamp; i--) {
+              for (
+                let i = insertionIndex - 1;
+                i >= 0 && events[i].timestamp === event.timestamp;
+                i--
+              ) {
                 if (isDuplicateEvent(events[i], event)) {
                   return { ...ctx, events };
                 }
               }
-              for (let i = insertionIndex; i < events.length && events[i].timestamp === event.timestamp; i++) {
+              for (
+                let i = insertionIndex;
+                i < events.length && events[i].timestamp === event.timestamp;
+                i++
+              ) {
                 if (isDuplicateEvent(events[i], event)) {
                   return { ...ctx, events };
                 }
