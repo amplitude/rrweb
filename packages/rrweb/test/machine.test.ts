@@ -1,7 +1,4 @@
-import {
-  EventType,
-  IncrementalSource,
-} from '@amplitude/rrweb-types';
+import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
 import type { eventWithTime, Emitter } from '@amplitude/rrweb-types';
 import {
   createPlayerService,
