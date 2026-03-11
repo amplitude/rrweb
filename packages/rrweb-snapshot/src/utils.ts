@@ -263,12 +263,7 @@ export function maskInputValue({
   maskInputFn?: MaskInputFn;
 }): string {
   let text = value || '';
-  const actualType = type && toLowerCase(type);
-
-  if (
-    maskInputOptions[tagName.toLowerCase() as keyof MaskInputOptions] ||
-    (actualType && maskInputOptions[actualType as keyof MaskInputOptions])
-  ) {
+  if (shouldMaskInput({ maskInputOptions, tagName, type })) {
     if (maskInputFn) {
       text = maskInputFn(text, element);
     } else {
@@ -276,6 +271,22 @@ export function maskInputValue({
     }
   }
   return text;
+}
+
+export function shouldMaskInput({
+  maskInputOptions,
+  tagName,
+  type,
+}: {
+  maskInputOptions: MaskInputOptions;
+  tagName: string;
+  type: string | null;
+}): boolean {
+  const actualType = type && toLowerCase(type);
+  return Boolean(
+    maskInputOptions[tagName.toLowerCase() as keyof MaskInputOptions] ||
+      (actualType && maskInputOptions[actualType as keyof MaskInputOptions]),
+  );
 }
 
 export function toLowerCase<T extends string>(str: T): Lowercase<T> {

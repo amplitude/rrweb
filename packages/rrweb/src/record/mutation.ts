@@ -8,6 +8,7 @@ import {
   maskInputValue,
   needMaskingText,
   serializeNodeWithId,
+  shouldMaskInput,
   toLowerCase,
   transformAttribute,
 } from '@amplitude/rrweb-snapshot';
@@ -581,17 +582,25 @@ export default class MutationBuffer {
         let attributeName = m.attributeName as string;
         let value = (m.target as HTMLElement).getAttribute(attributeName);
 
-        if (attributeName === 'value') {
+        if (attributeName === 'value' || attributeName === 'placeholder') {
           const type = getInputType(target);
-
-          value = maskInputValue({
-            element: target,
-            maskInputOptions: this.maskInputOptions,
-            tagName: target.tagName,
-            type,
-            value,
-            maskInputFn: this.maskInputFn,
-          });
+          if (
+            attributeName === 'value' ||
+            shouldMaskInput({
+              maskInputOptions: this.maskInputOptions,
+              tagName: target.tagName,
+              type,
+            })
+          ) {
+            value = maskInputValue({
+              element: target,
+              maskInputOptions: this.maskInputOptions,
+              tagName: target.tagName,
+              type,
+              value,
+              maskInputFn: this.maskInputFn,
+            });
+          }
         }
         if (
           isBlocked(m.target, this.blockClass, this.blockSelector, false) ||
