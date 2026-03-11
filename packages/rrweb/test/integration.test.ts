@@ -565,7 +565,9 @@ describe('record integration tests', function (this: ISuite) {
     });
     await waitForRAF(page);
 
-    const snapshots = (await page.evaluate('window.snapshots')) as eventWithTime[];
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
     const maskedPlaceholderValues: string[] = [];
     for (const event of snapshots) {
       if (event.type === EventType.FullSnapshot) {
