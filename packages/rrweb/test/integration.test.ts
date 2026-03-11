@@ -14,7 +14,12 @@ import {
   ISuite,
 } from './utils';
 import type { recordOptions } from '../src/types';
-import { eventWithTime, NodeType, EventType } from '@amplitude/rrweb-types';
+import {
+  eventWithTime,
+  NodeType,
+  EventType,
+  IncrementalSource,
+} from '@amplitude/rrweb-types';
 import { visitSnapshot } from '@amplitude/rrweb-snapshot';
 
 describe('record integration tests', function (this: ISuite) {
@@ -535,6 +540,77 @@ describe('record integration tests', function (this: ISuite) {
       'window.snapshots',
     )) as eventWithTime[];
     await assertSnapshot(snapshots);
+  });
+
+  it('should mask placeholder values when masked inputs are configured', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(
+      getHtml.call(this, 'empty.html', { maskAllInputs: true }),
+    );
+
+    await page.evaluate(() => {
+      const textarea = document.createElement('textarea');
+      textarea.id = 'masked-textarea';
+      textarea.placeholder = 'Respond to Sergio...';
+      document.body.appendChild(textarea);
+    });
+    await waitForRAF(page);
+
+    await page.evaluate(() => {
+      const textarea = document.getElementById(
+        'masked-textarea',
+      ) as HTMLTextAreaElement;
+      textarea.setAttribute('placeholder', 'Respond to Ashley...');
+    });
+    await waitForRAF(page);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    const maskedPlaceholderValues: string[] = [];
+    for (const event of snapshots) {
+      if (event.type === EventType.FullSnapshot) {
+        visitSnapshot(event.data.node, (node) => {
+          if (
+            node.type === NodeType.Element &&
+            node.tagName === 'textarea' &&
+            typeof node.attributes.placeholder === 'string'
+          ) {
+            maskedPlaceholderValues.push(node.attributes.placeholder);
+          }
+        });
+      }
+
+      if (
+        event.type === EventType.IncrementalSnapshot &&
+        event.data.source === IncrementalSource.Mutation
+      ) {
+        for (const add of event.data.adds) {
+          visitSnapshot(add.node, (node) => {
+            if (
+              node.type === NodeType.Element &&
+              node.tagName === 'textarea' &&
+              typeof node.attributes.placeholder === 'string'
+            ) {
+              maskedPlaceholderValues.push(node.attributes.placeholder);
+            }
+          });
+        }
+
+        for (const item of event.data.attributes) {
+          if (typeof item.attributes.placeholder === 'string') {
+            maskedPlaceholderValues.push(item.attributes.placeholder);
+          }
+        }
+      }
+    }
+
+    expect(maskedPlaceholderValues).toEqual(
+      expect.arrayContaining(['********************', '********************']),
+    );
+    expect(maskedPlaceholderValues).not.toContain('Respond to Sergio...');
+    expect(maskedPlaceholderValues).not.toContain('Respond to Ashley...');
   });
 
   it('can use maskInputOptions to configure which type of inputs should be masked', async () => {

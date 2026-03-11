@@ -23,6 +23,7 @@ import {
   isElement,
   isShadowRoot,
   maskInputValue,
+  shouldMaskInput,
   isNativeShadowDom,
   stringifyStylesheet,
   getInputType,
@@ -624,6 +625,7 @@ function serializeElementNode(
   }
   // form fields
   if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+    const type = getInputType(n);
     const value = (n as HTMLInputElement | HTMLTextAreaElement).value;
     const checked = (n as HTMLInputElement).checked;
     if (
@@ -635,7 +637,7 @@ function serializeElementNode(
     ) {
       attributes.value = maskInputValue({
         element: n,
-        type: getInputType(n),
+        type,
         tagName,
         value,
         maskInputOptions,
@@ -643,6 +645,21 @@ function serializeElementNode(
       });
     } else if (checked) {
       attributes.checked = checked;
+    }
+
+    // If this form control is maskable, redact placeholder text as well.
+    if (
+      typeof attributes.placeholder === 'string' &&
+      shouldMaskInput({ maskInputOptions, tagName, type })
+    ) {
+      attributes.placeholder = maskInputValue({
+        element: n,
+        type,
+        tagName,
+        value: attributes.placeholder,
+        maskInputOptions,
+        maskInputFn,
+      });
     }
   }
   if (tagName === 'option') {
