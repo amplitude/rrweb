@@ -9,16 +9,16 @@ import { NodeType } from '@amplitude/rrweb-types';
 export function hasChildNodes(
   node: serializedNodeWithId,
 ): node is serializedNodeWithId & { childNodes: serializedNodeWithId[] } {
-  return (
-    node.type === NodeType.Document || node.type === NodeType.Element
-  );
+  return node.type === NodeType.Document || node.type === NodeType.Element;
 }
 
 /**
  * Serializes adopted stylesheets from a Document or ShadowRoot into a single
  * CSS string.  Returns `null` when there are no sheets or no accessible rules.
  */
-export function serializeAdoptedStyleSheets(root: ShadowRoot | Document): string | null {
+export function serializeAdoptedStyleSheets(
+  root: ShadowRoot | Document,
+): string | null {
   const sheets = root.adoptedStyleSheets;
   if (!sheets?.length) return null;
   const parts: string[] = [];

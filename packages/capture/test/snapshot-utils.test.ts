@@ -75,9 +75,7 @@ describe('findMaxId', () => {
       makeElementNode(2, 'html', [
         makeElementNode(3, 'head'),
         makeElementNode(4, 'body', [
-          makeElementNode(10, 'div', [
-            makeTextNode(7),
-          ]),
+          makeElementNode(10, 'div', [makeTextNode(7)]),
         ]),
       ]),
     ]);
@@ -135,9 +133,7 @@ describe('injectDocumentAdoptedStyles', () => {
     document.adoptedStyleSheets = [];
 
     const head = makeElementNode(3, 'head', []);
-    const snap = makeDocumentNode(1, [
-      makeElementNode(2, 'html', [head]),
-    ]);
+    const snap = makeDocumentNode(1, [makeElementNode(2, 'html', [head])]);
     const nextId = { value: 10 };
 
     injectDocumentAdoptedStyles(snap, nextId);
@@ -153,9 +149,7 @@ describe('injectDocumentAdoptedStyles', () => {
     document.adoptedStyleSheets = [sheet];
 
     const head = makeElementNode(3, 'head', []);
-    const snap = makeDocumentNode(1, [
-      makeElementNode(2, 'html', [head]),
-    ]);
+    const snap = makeDocumentNode(1, [makeElementNode(2, 'html', [head])]);
     const nextId = { value: 10 };
 
     injectDocumentAdoptedStyles(snap, nextId);
@@ -176,9 +170,7 @@ describe('injectDocumentAdoptedStyles', () => {
     sheet.insertRule('body { color: red; }');
     document.adoptedStyleSheets = [sheet];
 
-    const snap = makeDocumentNode(1, [
-      makeElementNode(2, 'div'),
-    ]);
+    const snap = makeDocumentNode(1, [makeElementNode(2, 'div')]);
     const nextId = { value: 10 };
 
     injectDocumentAdoptedStyles(snap, nextId);
@@ -191,9 +183,7 @@ describe('injectDocumentAdoptedStyles', () => {
 
 describe('injectAdoptedStyles', () => {
   it('does nothing for non-shadow-host elements', () => {
-    const node = makeElementNode(1, 'div', [
-      makeElementNode(2, 'span'),
-    ]);
+    const node = makeElementNode(1, 'div', [makeElementNode(2, 'span')]);
     const mirror = { getNode: vi.fn() } as any;
     const nextId = { value: 10 };
 

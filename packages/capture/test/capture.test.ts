@@ -12,7 +12,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.querySelectorAll('style[data-amp-freeze]').forEach((el) => el.remove());
+  document
+    .querySelectorAll('style[data-amp-freeze]')
+    .forEach((el) => el.remove());
   document.body.innerHTML = '';
 });
 

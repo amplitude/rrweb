@@ -20,8 +20,20 @@ export function getFullPageDimension(
   const body = document.body;
 
   let max = isHeight
-    ? Math.max(body.scrollHeight, body.offsetHeight, doc.scrollHeight, doc.offsetHeight, doc.clientHeight)
-    : Math.max(body.scrollWidth, body.offsetWidth, doc.scrollWidth, doc.offsetWidth, doc.clientWidth);
+    ? Math.max(
+        body.scrollHeight,
+        body.offsetHeight,
+        doc.scrollHeight,
+        doc.offsetHeight,
+        doc.clientHeight,
+      )
+    : Math.max(
+        body.scrollWidth,
+        body.offsetWidth,
+        doc.scrollWidth,
+        doc.offsetWidth,
+        doc.clientWidth,
+      );
 
   const els = document.body.querySelectorAll('*');
   const limit = Math.min(els.length, MAX_ELEMENTS_TO_CHECK);
