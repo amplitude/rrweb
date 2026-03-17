@@ -1,10 +1,6 @@
 import { Mirror, snapshot } from '@amplitude/rrweb-snapshot';
-import {
-  findMaxId,
-  injectDocumentAdoptedStyles,
-  injectAdoptedStyles,
-} from './snapshot-utils';
-import { freezeAnimations, getFullPageDimension } from './dom-utils';
+import { getNextIdFromMirror, injectAllAdoptedStyles } from './snapshot-utils';
+import { freezeAnimations, getFullPageDimensions } from './dom-utils';
 
 export type CaptureOptions = {
   /**
@@ -45,9 +41,9 @@ export type CaptureResult = {
  *
  * 1. Freezes all running animations/transitions
  * 2. Takes an rrweb DOM snapshot (inlined images + stylesheets)
- * 3. Injects document-level and shadow DOM adopted stylesheets
+ * 3. Injects document-level and shadow DOM adopted stylesheets (single tree walk)
  * 4. Builds the rrweb FullSnapshot event
- * 5. Measures full page dimensions
+ * 5. Measures full page dimensions (single DOM pass for both height + width)
  * 6. Unfreezes animations
  *
  * Returns a `CaptureResult` with all the data needed to reconstruct
@@ -69,9 +65,8 @@ export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult
     });
 
     if (snap) {
-      const nextId = { value: findMaxId(snap) + 1 };
-      injectDocumentAdoptedStyles(snap, nextId);
-      injectAdoptedStyles(snap, mirror, nextId);
+      const nextId = { value: getNextIdFromMirror(mirror) };
+      injectAllAdoptedStyles(snap, mirror, nextId);
     }
 
     const fullSnapshotEvent = snap
@@ -88,8 +83,7 @@ export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult
         }
       : null;
 
-    const pageHeight = getFullPageDimension('height', excludeEl);
-    const pageWidth = getFullPageDimension('width', excludeEl);
+    const { pageHeight, pageWidth } = getFullPageDimensions(excludeEl);
 
     return {
       fullSnapshotEvent,
@@ -115,9 +109,16 @@ export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult
 // Re-export lower-level utilities for consumers who need them individually
 export {
   findMaxId,
+  getNextIdFromMirror,
   hasChildNodes,
   serializeAdoptedStyleSheets,
   injectAdoptedStyles,
   injectDocumentAdoptedStyles,
+  injectAllAdoptedStyles,
 } from './snapshot-utils';
-export { freezeAnimations, getFullPageDimension } from './dom-utils';
+export {
+  freezeAnimations,
+  getFullPageDimension,
+  getFullPageDimensions,
+} from './dom-utils';
+export type { PageDimensions } from './dom-utils';

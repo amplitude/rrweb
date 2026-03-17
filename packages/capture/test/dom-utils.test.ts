@@ -2,10 +2,13 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { freezeAnimations, getFullPageDimension } from '../src/dom-utils';
+import {
+  freezeAnimations,
+  getFullPageDimension,
+  getFullPageDimensions,
+} from '../src/dom-utils';
 
 beforeEach(() => {
-  // jsdom doesn't implement document.getAnimations, so polyfill it
   if (!document.getAnimations) {
     document.getAnimations = () => [];
   }
@@ -30,11 +33,9 @@ describe('freezeAnimations', () => {
 
   it('returns a cleanup function that removes the stylesheet', () => {
     const unfreeze = freezeAnimations();
-
     expect(document.querySelector('style[data-amp-freeze]')).not.toBeNull();
 
     unfreeze();
-
     expect(document.querySelector('style[data-amp-freeze]')).toBeNull();
   });
 
@@ -43,7 +44,6 @@ describe('freezeAnimations', () => {
     document.getAnimations = () => [{ finish: finishFn } as unknown as Animation];
 
     const unfreeze = freezeAnimations();
-
     expect(finishFn).toHaveBeenCalled();
 
     unfreeze();
@@ -59,37 +59,51 @@ describe('freezeAnimations', () => {
     ];
 
     const unfreeze = freezeAnimations();
-
     expect(cancelFn).toHaveBeenCalled();
 
     unfreeze();
   });
 });
 
-describe('getFullPageDimension', () => {
-  it('returns a number for height', () => {
-    const height = getFullPageDimension('height');
-    expect(typeof height).toBe('number');
-  });
-
-  it('returns a number for width', () => {
-    const width = getFullPageDimension('width');
-    expect(typeof width).toBe('number');
+describe('getFullPageDimensions', () => {
+  it('returns an object with pageHeight and pageWidth', () => {
+    const dims = getFullPageDimensions();
+    expect(typeof dims.pageHeight).toBe('number');
+    expect(typeof dims.pageWidth).toBe('number');
   });
 
   it('excludes the specified element from measurement', () => {
     const el = document.createElement('div');
     document.body.appendChild(el);
 
-    const withExclusion = getFullPageDimension('height', el);
-    const withoutExclusion = getFullPageDimension('height');
-
-    expect(typeof withExclusion).toBe('number');
-    expect(typeof withoutExclusion).toBe('number');
+    const dims = getFullPageDimensions(el);
+    expect(typeof dims.pageHeight).toBe('number');
+    expect(typeof dims.pageWidth).toBe('number');
   });
 
   it('handles null excludeEl gracefully', () => {
-    const height = getFullPageDimension('height', null);
+    const dims = getFullPageDimensions(null);
+    expect(typeof dims.pageHeight).toBe('number');
+    expect(typeof dims.pageWidth).toBe('number');
+  });
+});
+
+describe('getFullPageDimension', () => {
+  it('returns height when axis is height', () => {
+    const height = getFullPageDimension('height');
+    expect(typeof height).toBe('number');
+  });
+
+  it('returns width when axis is width', () => {
+    const width = getFullPageDimension('width');
+    expect(typeof width).toBe('number');
+  });
+
+  it('accepts an excludeEl parameter', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+
+    const height = getFullPageDimension('height', el);
     expect(typeof height).toBe('number');
   });
 });
