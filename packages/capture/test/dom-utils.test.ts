@@ -15,7 +15,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.querySelectorAll('style[data-amp-freeze]').forEach((el) => el.remove());
+  document
+    .querySelectorAll('style[data-amp-freeze]')
+    .forEach((el) => el.remove());
   document.body.innerHTML = '';
 });
 
@@ -41,7 +43,9 @@ describe('freezeAnimations', () => {
 
   it('calls finish() on animations', () => {
     const finishFn = vi.fn();
-    document.getAnimations = () => [{ finish: finishFn } as unknown as Animation];
+    document.getAnimations = () => [
+      { finish: finishFn } as unknown as Animation,
+    ];
 
     const unfreeze = freezeAnimations();
     expect(finishFn).toHaveBeenCalled();
@@ -53,7 +57,9 @@ describe('freezeAnimations', () => {
     const cancelFn = vi.fn();
     document.getAnimations = () => [
       {
-        finish: () => { throw new Error('infinite animation'); },
+        finish: () => {
+          throw new Error('infinite animation');
+        },
         cancel: cancelFn,
       } as unknown as Animation,
     ];

@@ -13,7 +13,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.querySelectorAll('style[data-amp-freeze]').forEach((el) => el.remove());
+  document
+    .querySelectorAll('style[data-amp-freeze]')
+    .forEach((el) => el.remove());
   document.body.innerHTML = '';
 });
 
@@ -99,7 +101,9 @@ describe('captureFullSnapshot', () => {
   });
 
   it('returns fullSnapshotEvent: null when snapshot() returns null', () => {
-    const snapshotSpy = vi.spyOn(rrwebSnapshot, 'snapshot').mockReturnValueOnce(null);
+    const snapshotSpy = vi
+      .spyOn(rrwebSnapshot, 'snapshot')
+      .mockReturnValueOnce(null);
 
     const result = captureFullSnapshot();
 

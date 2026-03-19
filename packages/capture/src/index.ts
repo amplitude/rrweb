@@ -43,7 +43,9 @@ export type CaptureResult = {
  * Returns a `CaptureResult` with all the data needed to reconstruct
  * or replay the page.
  */
-export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult {
+export function captureFullSnapshot(
+  options: CaptureOptions = {},
+): CaptureResult {
   const { excludeEl = null } = options;
 
   const unfreezeAnimations = freezeAnimations();

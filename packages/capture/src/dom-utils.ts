@@ -28,12 +28,18 @@ export function getFullPageDimensions(
   const body = document.body;
 
   let maxHeight = Math.max(
-    body.scrollHeight, body.offsetHeight,
-    doc.scrollHeight, doc.offsetHeight, doc.clientHeight,
+    body.scrollHeight,
+    body.offsetHeight,
+    doc.scrollHeight,
+    doc.offsetHeight,
+    doc.clientHeight,
   );
   let maxWidth = Math.max(
-    body.scrollWidth, body.offsetWidth,
-    doc.scrollWidth, doc.offsetWidth, doc.clientWidth,
+    body.scrollWidth,
+    body.offsetWidth,
+    doc.scrollWidth,
+    doc.offsetWidth,
+    doc.clientWidth,
   );
 
   const els = document.body.querySelectorAll('*');
