@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as rrwebSnapshot from '@amplitude/rrweb-snapshot';
 import { captureFullSnapshot } from '../src/index';
 
 beforeEach(() => {
@@ -95,6 +96,22 @@ describe('captureFullSnapshot', () => {
 
     const parsed = new Date(result.capturedAt);
     expect(parsed.toISOString()).toBe(result.capturedAt);
+  });
+
+  it('returns fullSnapshotEvent: null when snapshot() returns null', () => {
+    const snapshotSpy = vi.spyOn(rrwebSnapshot, 'snapshot').mockReturnValueOnce(null);
+
+    const result = captureFullSnapshot();
+
+    expect(result.fullSnapshotEvent).toBeNull();
+    expect(result.pageUrl).toBe(window.location.href);
+    expect(result.capturedAt).toBeTruthy();
+    expect(typeof result.scrollX).toBe('number');
+    expect(typeof result.scrollY).toBe('number');
+    expect(typeof result.pageHeight).toBe('number');
+    expect(typeof result.pageWidth).toBe('number');
+
+    snapshotSpy.mockRestore();
   });
 
   it('snapshot data node contains serialized DOM structure', () => {
