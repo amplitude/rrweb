@@ -1,4 +1,5 @@
 import { Mirror, snapshot } from '@amplitude/rrweb-snapshot';
+import { EventType, type fullSnapshotEvent } from '@amplitude/rrweb-types';
 import { getNextIdFromMirror, injectAllAdoptedStyles } from './snapshot-utils';
 import { freezeAnimations, getFullPageDimensions } from './dom-utils';
 
@@ -12,15 +13,8 @@ export type CaptureOptions = {
 };
 
 export type CaptureResult = {
-  /** The rrweb FullSnapshot event (EventType.FullSnapshot = 2). */
-  fullSnapshotEvent: {
-    type: 2;
-    timestamp: number;
-    data: {
-      node: ReturnType<typeof snapshot>;
-      initialOffset: { left: number; top: number };
-    };
-  } | null;
+  /** The rrweb FullSnapshot event. */
+  fullSnapshotEvent: (fullSnapshotEvent & { timestamp: number }) | null;
   pageUrl: string;
   pageTitle: string | null;
   capturedAt: string;
@@ -58,7 +52,7 @@ export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult
     const mirror = new Mirror();
     const snap = snapshot(document, {
       mirror,
-      inlineImages: true,
+      inlineImages: false,
       inlineStylesheet: true,
       slimDOM: false,
       recordCanvas: false,
@@ -71,7 +65,7 @@ export function captureFullSnapshot(options: CaptureOptions = {}): CaptureResult
 
     const fullSnapshotEvent = snap
       ? {
-          type: 2 as const,
+          type: EventType.FullSnapshot as const,
           timestamp: Date.now(),
           data: {
             node: snap,
