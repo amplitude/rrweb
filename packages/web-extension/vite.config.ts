@@ -8,8 +8,6 @@ import semver from 'semver';
 
 const emptyOutDir = !process.argv.includes('--watch');
 
-const emptyOutDir = !process.argv.includes('--watch');
-
 function useSpecialFormat(
   entriesToUse: string[],
   format: LibraryFormats,
