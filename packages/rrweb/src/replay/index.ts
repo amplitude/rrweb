@@ -2439,15 +2439,41 @@ export class Replayer {
     const MAX_RETRY_TIME = 10;
     let count = 0;
     const adoptStyleSheets = (targetHost: Node, styleIds: number[]) => {
+      const targetDoc =
+        targetHost.nodeName === '#document'
+          ? (targetHost as Document)
+          : (targetHost as HTMLElement).shadowRoot?.ownerDocument ?? document;
+      const targetWindow = targetDoc.defaultView ?? window;
+
+      // Browsers disallow sharing a CSSStyleSheet instance across documents.
+      // Clone any sheet that was constructed in a different window before adopting (SR-2960).
       const stylesToAdopt = styleIds
         .map((styleId) => this.styleMirror.getStyle(styleId))
-        .filter((style) => style !== null) as CSSStyleSheet[];
-      if (hasShadowRoot(targetHost))
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
-          stylesToAdopt;
-      else if (targetHost.nodeName === '#document')
-        (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+        .filter((style) => style !== null)
+        .map((sheet) => {
+          if (sheet!.constructor === targetWindow.CSSStyleSheet) {
+            return sheet!;
+          }
+          try {
+            const clone = new targetWindow.CSSStyleSheet();
+            for (const rule of Array.from(sheet!.cssRules)) {
+              clone.insertRule(rule.cssText, clone.cssRules.length);
+            }
+            return clone;
+          } catch {
+            return sheet!;
+          }
+        }) as CSSStyleSheet[];
+      try {
+        if (hasShadowRoot(targetHost))
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
+            stylesToAdopt;
+        else if (targetHost.nodeName === '#document')
+          (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+      } catch (e) {
+        this.warn('adoptedStyleSheets assignment failed', e);
+      }
 
       /**
        * In the live mode where events are transferred over network without strict order guarantee, some newer events are applied before some old events and adopted stylesheets may haven't been created.
