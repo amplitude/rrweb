@@ -513,6 +513,30 @@ export function buildNodeWithSN(
     (n.type === NodeType.Document || n.type === NodeType.Element) &&
     !skipChild
   ) {
+    // Batch normal child insertions into a DocumentFragment so the browser
+    // only processes one appendChild per run of consecutive normal children,
+    // instead of one per child. This reduces layout recalculation when the
+    // parent is already attached to a live document.
+    const useFragment =
+      typeof doc.createDocumentFragment === 'function';
+    let fragment: DocumentFragment | null = useFragment
+      ? doc.createDocumentFragment()
+      : null;
+    let pendingCallbacks: Array<{ node: Node; id: number }> = [];
+
+    const flushFragment = () => {
+      if (fragment && pendingCallbacks.length > 0) {
+        node.appendChild(fragment);
+        if (afterAppend) {
+          for (const entry of pendingCallbacks) {
+            afterAppend(entry.node, entry.id);
+          }
+        }
+        pendingCallbacks = [];
+        fragment = doc.createDocumentFragment();
+      }
+    };
+
     for (const childN of n.childNodes) {
       const childNode = buildNodeWithSN(childN, {
         doc,
@@ -529,11 +553,16 @@ export function buildNodeWithSN(
       }
 
       if (childN.isShadow && isElement(node) && node.shadowRoot) {
+        flushFragment();
         node.shadowRoot.appendChild(childNode);
+        if (afterAppend) {
+          afterAppend(childNode, childN.id);
+        }
       } else if (
         n.type === NodeType.Document &&
         childN.type == NodeType.Element
       ) {
+        flushFragment();
         const htmlElement = childNode as HTMLElement;
         let body: HTMLBodyElement | null = null;
         htmlElement.childNodes.forEach((child) => {
@@ -552,13 +581,22 @@ export function buildNodeWithSN(
         } else {
           node.appendChild(childNode);
         }
+        if (afterAppend) {
+          afterAppend(childNode, childN.id);
+        }
+      } else if (fragment) {
+        fragment.appendChild(childNode);
+        pendingCallbacks.push({ node: childNode, id: childN.id });
       } else {
         node.appendChild(childNode);
-      }
-      if (afterAppend) {
-        afterAppend(childNode, childN.id);
+        if (afterAppend) {
+          afterAppend(childNode, childN.id);
+        }
       }
     }
+
+    // Flush any remaining batched children.
+    flushFragment();
   }
 
   return node;
