@@ -2493,7 +2493,7 @@ export class Replayer {
         // If it's a ShadowRoot, continue traversal from the shadow host.
         const rootNode = currentEl.getRootNode();
         if (rootNode && 'host' in rootNode && (rootNode as ShadowRoot).host) {
-          currentEl = (rootNode as ShadowRoot).host as Element;
+          currentEl = (rootNode as ShadowRoot).host;
         } else {
           break;
         }
