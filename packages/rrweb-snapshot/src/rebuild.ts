@@ -517,8 +517,7 @@ export function buildNodeWithSN(
     // only processes one appendChild per run of consecutive normal children,
     // instead of one per child. This reduces layout recalculation when the
     // parent is already attached to a live document.
-    const useFragment =
-      typeof doc.createDocumentFragment === 'function';
+    const useFragment = typeof doc.createDocumentFragment === 'function';
     let fragment: DocumentFragment | null = useFragment
       ? doc.createDocumentFragment()
       : null;
