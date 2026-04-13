@@ -519,6 +519,8 @@ export function buildNodeWithSN(
     // parent is already attached to a live document.
     // Only use fragment for Element parents — Document-level children (DOCTYPE,
     // <html>) cannot be inserted into a DocumentFragment.
+    // Guard against RRDocument (virtual DOM used during fast-forward replay)
+    // which doesn't implement createDocumentFragment.
     const useFragment =
       n.type === NodeType.Element &&
       typeof doc.createDocumentFragment === 'function';
@@ -530,6 +532,10 @@ export function buildNodeWithSN(
     const flushFragment = () => {
       if (fragment && pendingCallbacks.length > 0) {
         node.appendChild(fragment);
+        // Note: with fragment batching, afterAppend fires after ALL batched
+        // siblings are already in the DOM, not one-by-one as in the unbatched
+        // path. No current callers depend on intermediate DOM state between
+        // sibling insertions, but this is a behavioral difference to be aware of.
         if (afterAppend) {
           for (const entry of pendingCallbacks) {
             afterAppend(entry.node, entry.id);

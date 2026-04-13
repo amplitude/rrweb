@@ -150,6 +150,124 @@ describe('rebuild', function () {
     });
   });
 
+  describe('DocumentFragment batching', function () {
+    it('flushes fragment before shadow child and preserves DOM order', function () {
+      const appendOrder: number[] = [];
+      const node = buildNodeWithSN(
+        {
+          id: 1,
+          tagName: 'div',
+          type: NodeType.Element,
+          attributes: {},
+          childNodes: [
+            {
+              id: 2,
+              tagName: 'span',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+            {
+              id: 3,
+              tagName: 'p',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+            {
+              id: 4,
+              tagName: 'div',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+              isShadow: true,
+            },
+            {
+              id: 5,
+              tagName: 'em',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+          ],
+          isShadowHost: true,
+        },
+        {
+          doc: document,
+          mirror,
+          hackCss: false,
+          cache,
+          afterAppend: (_n, id) => {
+            appendOrder.push(id);
+          },
+        },
+      ) as HTMLDivElement;
+
+      // Normal children (span, p) should be in light DOM in order
+      expect(node.childNodes.length).toBe(3); // span, p, em (light DOM)
+      expect((node.childNodes[0] as Element).tagName).toBe('SPAN');
+      expect((node.childNodes[1] as Element).tagName).toBe('P');
+      expect((node.childNodes[2] as Element).tagName).toBe('EM');
+
+      // Shadow child should be in shadowRoot
+      expect(node.shadowRoot).not.toBeNull();
+      expect(node.shadowRoot!.childNodes.length).toBe(1);
+      expect((node.shadowRoot!.childNodes[0] as Element).tagName).toBe('DIV');
+
+      // afterAppend should have been called for every child in order:
+      // span(2), p(3) flushed before shadow, then shadow div(4), then em(5)
+      expect(appendOrder).toEqual([2, 3, 4, 5]);
+    });
+
+    it('calls afterAppend for every batched child in insertion order', function () {
+      const appendOrder: number[] = [];
+      buildNodeWithSN(
+        {
+          id: 1,
+          tagName: 'div',
+          type: NodeType.Element,
+          attributes: {},
+          childNodes: [
+            {
+              id: 2,
+              tagName: 'span',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+            {
+              id: 3,
+              tagName: 'em',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+            {
+              id: 4,
+              tagName: 'p',
+              type: NodeType.Element,
+              attributes: {},
+              childNodes: [],
+            },
+          ],
+        },
+        {
+          doc: document,
+          mirror,
+          hackCss: false,
+          cache,
+          afterAppend: (_n, id) => {
+            appendOrder.push(id);
+          },
+        },
+      );
+
+      // All three children are batched and flushed at end.
+      // afterAppend should be called for each, in order.
+      expect(appendOrder).toEqual([2, 3, 4]);
+    });
+  });
+
   describe('customElementExclusions', function () {
     it('should not define custom elements for excluded tag names', function () {
       const spy = vi.spyOn(customElements, 'define');
