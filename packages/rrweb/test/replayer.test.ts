@@ -1129,9 +1129,7 @@ describe('replayer', function () {
   });
 
   it('should propagate hover across multi-level nested shadow DOMs', async () => {
-    await page.evaluate(
-      `events = ${JSON.stringify(hoverInNestedShadowDom)}`,
-    );
+    await page.evaluate(`events = ${JSON.stringify(hoverInNestedShadowDom)}`);
 
     await page.evaluate(`
       const { Replayer } = rrweb;
