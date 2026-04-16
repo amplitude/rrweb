@@ -39,8 +39,21 @@ jobs:
       - name: Collect new upstream commits
         id: collect
         run: |
-          # Commits in upstream/master that are not in origin/master
-          COMMITS=$(git log origin/master..upstream/master --format='{"hash":"%H","short":"%h","subject":"%s","author":"%an","date":"%ci"}' | jq -s '.')
+          # Commits in upstream/master that are not in origin/master.
+          # Do not hand-build JSON from %s/%an: quotes and backslashes in subjects break jq.
+          # One line per commit: fields separated by US (\x1f); git's trailing newline separates records.
+          COMMITS=$(git log origin/master..upstream/master --format='%H%x1f%h%x1f%s%x1f%an%x1f%ci' | jq -Rs '
+            split("\n")
+            | map(select(length > 0))
+            | map(split("\u001f"))
+            | map({
+                hash: .[0],
+                short: .[1],
+                subject: .[2],
+                author: .[3],
+                date: .[4]
+              })
+          ')
 
           COUNT=$(echo "$COMMITS" | jq 'length')
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
