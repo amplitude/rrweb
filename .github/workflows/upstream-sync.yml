@@ -38,13 +38,50 @@ jobs:
           git remote add upstream https://github.com/rrweb-io/rrweb.git
           git fetch upstream master --no-tags
 
+      - name: Determine last sync point
+        id: last_sync
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FALLBACK="3e9e42fdfd6349087d7a0345af1b39dd56528502"
+
+          # Look for the most recent upstream-sync PR (open first, then merged)
+          # PR titles look like: chore: upstream rrweb sync 2026-04-16 (4 commits) [last: abc1234def]
+          LAST_HASH=""
+          for STATE in open closed; do
+            TITLE=$(gh pr list \
+              --label upstream-sync \
+              --state "$STATE" \
+              --limit 1 \
+              --sort updated \
+              --json title \
+              --jq '.[0].title // empty' 2>/dev/null || true)
+
+            if [ -n "$TITLE" ]; then
+              LAST_HASH=$(echo "$TITLE" | sed -n 's/.*\[last: \([0-9a-f]\{1,\}\)\].*/\1/p')
+              if [ -n "$LAST_HASH" ]; then
+                echo "Found last sync hash from $STATE PR: $LAST_HASH"
+                break
+              fi
+            fi
+          done
+
+          if [ -z "$LAST_HASH" ]; then
+            LAST_HASH="$FALLBACK"
+            echo "No previous sync PR found; using fallback: $LAST_HASH"
+          fi
+
+          echo "hash=$LAST_HASH" >> "$GITHUB_OUTPUT"
+
       - name: Collect new upstream commits
         id: collect
         run: |
-          # Commits in upstream/master that are not in origin/master.
+          LAST_SYNC="${{ steps.last_sync.outputs.hash }}"
+
+          # Commits in upstream/master after the last sync point.
           # Do not hand-build JSON from %s/%an: quotes and backslashes in subjects break jq.
           # One line per commit: fields separated by US (\x1f); git's trailing newline separates records.
-          COMMITS=$(git log origin/master..upstream/master --format='%H%x1f%h%x1f%s%x1f%an%x1f%ci' | jq -Rs '
+          COMMITS=$(git log ${LAST_SYNC}..upstream/master --format='%H%x1f%h%x1f%s%x1f%an%x1f%ci' | jq -Rs '
             split("\n")
             | map(select(length > 0))
             | map(split("\u001f"))
@@ -58,12 +95,19 @@ jobs:
           ')
 
           COUNT=$(echo "$COMMITS" | jq 'length')
+
+          # The newest commit in the range — this becomes the next sync point.
+          # git log outputs newest-first, so .[0] is the tip of upstream/master.
+          LAST_UPSTREAM_HASH=$(echo "$COMMITS" | jq -r '.[0].hash // empty')
+
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "commits<<EOF" >> "$GITHUB_OUTPUT"
           echo "$COMMITS" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "last_upstream_hash=$LAST_UPSTREAM_HASH" >> "$GITHUB_OUTPUT"
 
-          echo "Found $COUNT new upstream commits"
+          echo "Found $COUNT new upstream commits since $LAST_SYNC"
+          echo "Last upstream commit: $LAST_UPSTREAM_HASH"
 
       - name: Exit early if no new commits
         if: steps.collect.outputs.count == '0'
@@ -226,11 +270,16 @@ jobs:
             "- **`\(.hash[0:7])`** \(.subject)\n  \(.conflict_resolution_note)"
           ')
 
+          LAST_SYNC="${{ steps.last_sync.outputs.hash }}"
+          LAST_UPSTREAM="${{ steps.collect.outputs.last_upstream_hash }}"
+
           {
             echo "body<<PRBODY"
             echo "## Upstream rrweb sync — $DATE"
             echo ""
             echo "Automatically cherry-picked **$PICKED** upstream commit(s) from [rrweb-io/rrweb](https://github.com/rrweb-io/rrweb)."
+            echo ""
+            echo "**Sync range:** \`$LAST_SYNC\` → \`$LAST_UPSTREAM\`"
             echo ""
             echo "### Cherry-picked commits"
             echo ""
@@ -300,7 +349,8 @@ jobs:
         run: |
           PICKED=${{ steps.summary.outputs.picked }}
           DATE=$(date +%Y-%m-%d)
-          TITLE="chore: upstream rrweb sync $DATE ($PICKED commit(s))"
+          LAST_HASH="${{ steps.collect.outputs.last_upstream_hash }}"
+          TITLE="chore: upstream rrweb sync $DATE ($PICKED commit(s)) [last: $LAST_HASH]"
 
           PR_URL=$(gh pr create \
             --title "$TITLE" \
