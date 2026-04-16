@@ -18,6 +18,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Required by anthropics/claude-code-action for OIDC-based GitHub token setup
+      id-token: write
 
     steps:
       - name: Checkout amplitude/rrweb
