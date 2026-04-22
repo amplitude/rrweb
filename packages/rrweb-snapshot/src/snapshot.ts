@@ -927,14 +927,24 @@ function slimDOMExcluded(
 function serializeAdoptedStyleSheets(
   sheets: CSSStyleSheet[] | readonly CSSStyleSheet[],
   onAdoptedStyleSheet: (sheet: CSSStyleSheet) => number,
+  emittedStyleIds: Set<number>,
 ): serializedAdoptedStyleSheet[] {
-  return Array.from(sheets).map((sheet) => ({
-    styleId: onAdoptedStyleSheet(sheet),
-    rules: Array.from(sheet.cssRules || [], (rule, index) => ({
-      rule: stringifyRule(rule, sheet.href),
-      index,
-    })),
-  }));
+  return Array.from(sheets).map((sheet) => {
+    const styleId = onAdoptedStyleSheet(sheet);
+    let rules: serializedAdoptedStyleSheet['rules'] = [];
+    if (!emittedStyleIds.has(styleId)) {
+      emittedStyleIds.add(styleId);
+      try {
+        rules = Array.from(sheet.cssRules, (rule, index) => ({
+          rule: stringifyRule(rule, sheet.href),
+          index,
+        }));
+      } catch (e) {
+        // SecurityError: cross-origin stylesheet
+      }
+    }
+    return { styleId, rules };
+  });
 }
 
 export function serializeNodeWithId(
@@ -962,6 +972,7 @@ export function serializeNodeWithId(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
+    _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
       node: serializedElementNodeWithId,
@@ -1004,6 +1015,7 @@ export function serializeNodeWithId(
     cssCaptured = false,
     applyBackgroundColorToBlockedElements = false,
   } = options;
+  const emittedStyleIds = options._emittedStyleIds ?? new Set<number>();
   let { needsMask } = options;
   let { preserveWhiteSpace = true } = options;
 
@@ -1081,6 +1093,7 @@ export function serializeNodeWithId(
         serializedNode.adoptedStyleSheets = serializeAdoptedStyleSheets(
           shadowRootEl.adoptedStyleSheets,
           onAdoptedStyleSheet,
+          emittedStyleIds,
         );
       }
     }
@@ -1092,6 +1105,7 @@ export function serializeNodeWithId(
         serializeAdoptedStyleSheets(
           doc.adoptedStyleSheets,
           onAdoptedStyleSheet,
+          emittedStyleIds,
         );
     }
   }
@@ -1129,6 +1143,7 @@ export function serializeNodeWithId(
       preserveWhiteSpace,
       onSerialize,
       onAdoptedStyleSheet,
+      _emittedStyleIds: emittedStyleIds,
       onIframeLoad,
       iframeLoadTimeout,
       onStylesheetLoad,
@@ -1207,6 +1222,7 @@ export function serializeNodeWithId(
             recordCanvas,
             preserveWhiteSpace,
             onSerialize,
+            onAdoptedStyleSheet,
             onIframeLoad,
             iframeLoadTimeout,
             onStylesheetLoad,

@@ -1185,6 +1185,12 @@ export class Replayer {
         );
       }
 
+      if (!this.usingVirtualDom) {
+        const sn = this.mirror.getMeta(builtNode);
+        if (sn && 'adoptedStyleSheets' in sn && sn.adoptedStyleSheets?.length) {
+          this.applySnapshotAdoptedStyleSheets(builtNode, sn.adoptedStyleSheets);
+        }
+      }
       // Skip the plugin onBuild callback in the virtual dom mode
       if (this.usingVirtualDom) return;
       for (const plugin of this.config.plugins || []) {
@@ -2321,13 +2327,20 @@ export class Replayer {
 
     const sheets: CSSStyleSheet[] = [];
     for (const { styleId, rules } of adoptedStyleSheets) {
+      const existing = this.styleMirror.getStyle(styleId);
+      if (existing) {
+        sheets.push(existing);
+        continue;
+      }
       try {
         const sheet = new hostWindow.CSSStyleSheet();
         this.styleMirror.add(sheet, styleId);
-        this.applyStyleSheetRule(
-          { source: IncrementalSource.StyleSheetRule, adds: rules },
-          sheet,
-        );
+        if (rules.length) {
+          this.applyStyleSheetRule(
+            { source: IncrementalSource.StyleSheetRule, adds: rules },
+            sheet,
+          );
+        }
         sheets.push(sheet);
       } catch (e) {
         // browser doesn't support constructing StyleSheet
@@ -2335,8 +2348,7 @@ export class Replayer {
     }
 
     if (hasShadowRoot(node))
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      (node as HTMLElement).shadowRoot!.adoptedStyleSheets = sheets;
+      node.shadowRoot.adoptedStyleSheets = sheets;
     else if (node.nodeName === '#document')
       (node as Document).adoptedStyleSheets = sheets;
   }
