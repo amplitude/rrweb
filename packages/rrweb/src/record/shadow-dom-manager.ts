@@ -143,10 +143,6 @@ export class ShadowDomManager {
     );
   }
 
-  public clearCache() {
-    this.shadowDoms = new WeakSet();
-  }
-
   public reset() {
     this.restoreHandlers.forEach((handler) => {
       try {
@@ -156,6 +152,6 @@ export class ShadowDomManager {
       }
     });
     this.restoreHandlers = [];
-    this.clearCache();
+    this.shadowDoms = new WeakSet();
   }
 }
