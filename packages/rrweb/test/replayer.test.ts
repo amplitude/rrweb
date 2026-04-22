@@ -6,6 +6,7 @@ import type * as puppeteer from 'puppeteer';
 import { vi } from 'vitest';
 import adoptedStyleSheet from './events/adopted-style-sheet';
 import adoptedStyleSheetInSnapshot from './events/adopted-style-sheet-in-snapshot';
+import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
@@ -1085,6 +1086,53 @@ describe('replayer', function () {
     await waitForRAF(page);
     await page.evaluate('replayer.pause(300);');
     await checkCorrectness();
+  });
+
+  it('reuses the same CSSStyleSheet object when two shadow hosts share a styleId', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetSharedInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // Both shadow roots should have the rule applied (span is red)
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-1')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-2')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // The replayer must reuse the same CSSStyleSheet object for both hosts
+    // (de-dup path: second host has rules: [] and looks up the sheet by styleId)
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          document.querySelector('#shadow-host-1')!.shadowRoot!
+            .adoptedStyleSheets[0] ===
+          document.querySelector('#shadow-host-2')!.shadowRoot!
+            .adoptedStyleSheets[0],
+      ),
+    ).toBe(true);
   });
 
   it('should replay document replacement events without warnings or errors', async () => {
