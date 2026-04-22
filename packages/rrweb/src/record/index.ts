@@ -96,6 +96,7 @@ export function record<T = eventWithTime>(
     userTriggeredOnInput = false,
     collectFonts = false,
     inlineImages = false,
+    captureAdoptedStyleSheets = true,
     plugins,
     keepIframeSrcFn = () => false,
     ignoreCSSAttributes = new Set([]),
@@ -406,7 +407,9 @@ export function record<T = eventWithTime>(
           shadowDomManager.addShadowRoot(dom.shadowRoot(n as Node)!, document);
         }
       },
-      onAdoptedStyleSheet: (sheet) => stylesheetManager.styleMirror.add(sheet),
+      onAdoptedStyleSheet: captureAdoptedStyleSheets
+        ? (sheet) => stylesheetManager.styleMirror.add(sheet)
+        : undefined,
       onIframeLoad: (iframe, childSn) => {
         iframeManager.attachIframe(iframe, childSn);
         shadowDomManager.observeAttachShadow(iframe);
