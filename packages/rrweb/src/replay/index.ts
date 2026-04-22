@@ -187,6 +187,13 @@ export class Replayer {
   // Similar to the reason for constructedStyleMutations.
   private adoptedStyleSheets: adoptedStyleSheetData[] = [];
 
+  // Inline adoptedStyleSheets from iframe documents encountered while usingVirtualDom.
+  // Deferred until the Flush handler materializes real nodes via diff().
+  private snapshotAdoptedStyleSheetQueue: {
+    id: number;
+    adoptedStyleSheets: serializedAdoptedStyleSheet[];
+  }[] = [];
+
   constructor(
     events: Array<eventWithTime | string>,
     config?: Partial<playerConfig>,
@@ -314,6 +321,12 @@ export class Replayer {
           this.applyAdoptedStyleSheet(data);
         });
         this.adoptedStyleSheets = [];
+
+        this.snapshotAdoptedStyleSheetQueue.forEach(({ id, adoptedStyleSheets }) => {
+          const node = this.mirror.getNode(id);
+          if (node) this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
+        });
+        this.snapshotAdoptedStyleSheetQueue = [];
       }
 
       if (this.mousePos) {
@@ -1188,13 +1201,31 @@ export class Replayer {
         );
       }
 
-      if (!this.usingVirtualDom) {
-        const sn = this.mirror.getMeta(builtNode);
-        if (sn && 'adoptedStyleSheets' in sn && sn.adoptedStyleSheets?.length) {
-          this.applySnapshotAdoptedStyleSheets(
-            builtNode,
-            sn.adoptedStyleSheets,
-          );
+      {
+        const nodeSn = (mirror as TMirror).getMeta(
+          builtNode as unknown as TNode,
+        );
+        if (
+          nodeSn &&
+          'adoptedStyleSheets' in nodeSn &&
+          nodeSn.adoptedStyleSheets?.length
+        ) {
+          if (this.usingVirtualDom) {
+            // In virtual DOM mode the real nodes don't exist yet; defer until
+            // the Flush handler materializes them via diff().
+            const id = (mirror as TMirror).getId(
+              builtNode as unknown as TNode,
+            );
+            this.snapshotAdoptedStyleSheetQueue.push({
+              id,
+              adoptedStyleSheets: nodeSn.adoptedStyleSheets,
+            });
+          } else {
+            this.applySnapshotAdoptedStyleSheets(
+              builtNode,
+              nodeSn.adoptedStyleSheets,
+            );
+          }
         }
       }
       // Skip the plugin onBuild callback in the virtual dom mode
@@ -2335,12 +2366,13 @@ export class Replayer {
     for (const { styleId, rules } of adoptedStyleSheets) {
       const existing = this.styleMirror.getStyle(styleId);
       if (existing) {
-        // Sheet already registered from an earlier host in this snapshot (shared sheet de-dup).
-        // Reuse the same object so all hosts end up with the identical CSSStyleSheet instance.
-        // If this entry carries rules the existing sheet doesn't yet have (post-order replay:
-        // a deeper host's afterAppend fires before its ancestor's, so the ancestor's
-        // rule-carrying entry arrives after the descendant already created an empty sheet),
-        // apply them now so the shared sheet ends up populated.
+        // The recorder de-duplicates shared CSSStyleSheet objects: rules are
+        // emitted once (first encounter, top-down) and subsequent references
+        // carry rules:[]. Because afterAppend fires bottom-up (post-order),
+        // the deeper shadow host's empty entry can register the sheet before
+        // the ancestor's rule-carrying entry arrives. Back-fill the rules
+        // onto the already-registered sheet so the shared instance is fully
+        // populated regardless of which host's afterAppend fires first.
         if (rules.length) {
           this.applyStyleSheetRule(
             { source: IncrementalSource.StyleSheetRule, adds: rules },

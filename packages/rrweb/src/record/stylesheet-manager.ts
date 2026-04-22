@@ -72,7 +72,11 @@ export class StylesheetManager {
             index,
           }));
         } catch (e) {
-          // SecurityError: cross-origin stylesheet
+          if (e instanceof DOMException && e.name === 'SecurityError') {
+            // Cross-origin stylesheet: cssRules is intentionally blocked.
+          } else {
+            throw e;
+          }
         }
         styles.push({ styleId, rules });
       } else styleId = this.styleMirror.getId(sheet);

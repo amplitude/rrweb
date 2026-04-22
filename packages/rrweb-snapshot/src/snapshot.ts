@@ -940,7 +940,11 @@ function serializeAdoptedStyleSheets(
           index,
         }));
       } catch (e) {
-        // SecurityError: cross-origin stylesheet
+        if (e instanceof DOMException && e.name === 'SecurityError') {
+          // Cross-origin stylesheet: cssRules is intentionally blocked.
+        } else {
+          throw e;
+        }
       }
     }
     return { styleId, rules };

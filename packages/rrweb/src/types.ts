@@ -76,6 +76,11 @@ export type recordOptions<T> = {
    * inline in the full snapshot so replay is self-contained even if incremental
    * AdoptedStyleSheet events are dropped in transit. Set to false if snapshot
    * size is a concern; the CSS will instead be carried in incremental events.
+   *
+   * **Warning:** setting this to `false` increases the risk of unstyled shadow
+   * DOM on replay. Shadow-root `adoptedStyleSheets` are emitted via a
+   * `setTimeout(0)` after the snapshot, so if any incremental events are
+   * dropped in transit those styles will be permanently missing from the replay.
    */
   captureAdoptedStyleSheets?: boolean;
   plugins?: RecordPlugin[];

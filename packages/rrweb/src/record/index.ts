@@ -407,6 +407,8 @@ export function record<T = eventWithTime>(
           shadowDomManager.addShadowRoot(dom.shadowRoot(n as Node)!, document);
         }
       },
+      // stylesheetManager.reset() runs just before snapshot() so styleMirror
+      // ids are always fresh and in sync with the snapshot's serialized styleIds.
       onAdoptedStyleSheet: captureAdoptedStyleSheets
         ? (sheet) => stylesheetManager.styleMirror.add(sheet)
         : undefined,
