@@ -972,6 +972,7 @@ export function serializeNodeWithId(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
+    /** @internal Tracks styleIds whose rules have already been serialized; shared across recursive calls within one document traversal. Not forwarded into iframe documents because CSSStyleSheet instances cannot be shared across browsing contexts. */
     _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,

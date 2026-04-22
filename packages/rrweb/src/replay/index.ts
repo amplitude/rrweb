@@ -2332,6 +2332,8 @@ export class Replayer {
     for (const { styleId, rules } of adoptedStyleSheets) {
       const existing = this.styleMirror.getStyle(styleId);
       if (existing) {
+        // Sheet already registered from an earlier host in this snapshot (shared sheet de-dup).
+        // Reuse the same object so all hosts end up with the identical CSSStyleSheet instance.
         sheets.push(existing);
         continue;
       }
