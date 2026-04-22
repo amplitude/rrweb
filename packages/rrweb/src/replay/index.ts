@@ -967,6 +967,9 @@ export class Replayer {
       if (meta) scratchMirror.add(node, meta);
     });
 
+    // onAdoptedStyleSheet is intentionally omitted: seek-cache snapshots capture
+    // static DOM structure only. AdoptedStyleSheets are re-applied when the
+    // replayer replays incremental events from the seek checkpoint to the target time.
     const snapshotNode = snapshot(this.iframe.contentDocument, {
       mirror: scratchMirror,
       blockClass: this.config.blockClass,

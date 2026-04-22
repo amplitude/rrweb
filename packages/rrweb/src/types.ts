@@ -71,6 +71,12 @@ export type recordOptions<T> = {
   userTriggeredOnInput?: boolean;
   collectFonts?: boolean;
   inlineImages?: boolean;
+  /**
+   * When true (default), CSS rules from `adoptedStyleSheets` are serialized
+   * inline in the full snapshot so replay is self-contained even if incremental
+   * AdoptedStyleSheet events are dropped in transit. Set to false if snapshot
+   * size is a concern; the CSS will instead be carried in incremental events.
+   */
   captureAdoptedStyleSheets?: boolean;
   plugins?: RecordPlugin[];
   // departed, please use sampling options
