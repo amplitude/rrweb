@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import adoptedStyleSheet from './events/adopted-style-sheet';
 import adoptedStyleSheetInSnapshot from './events/adopted-style-sheet-in-snapshot';
 import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shared-in-snapshot';
+import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
@@ -1132,6 +1133,58 @@ describe('replayer', function () {
           document.querySelector('#shadow-host-2')!.shadowRoot!
             .adoptedStyleSheets[0],
       ),
+    ).toBe(true);
+  });
+
+  it('applies rules to shared sheet even when inner host afterAppend fires before outer (post-order)', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetNestedSharedInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // #inner-host lives inside #outer-host's shadow root — must traverse to reach it
+    // Outer shadow root span must be red
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            (document.querySelector('#outer-host') as HTMLElement)
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // Inner shadow root span must also be red (post-order fix: rules back-filled)
+    expect(
+      await contentDocument!.evaluate(() => {
+        const innerHost = (
+          document.querySelector('#outer-host') as HTMLElement
+        ).shadowRoot!.querySelector('#inner-host') as HTMLElement;
+        return window.getComputedStyle(
+          innerHost.shadowRoot!.querySelector('span')!,
+        ).color;
+      }),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // Outer and inner shadow roots must share the same CSSStyleSheet object
+    expect(
+      await contentDocument!.evaluate(() => {
+        const outerRoot = (
+          document.querySelector('#outer-host') as HTMLElement
+        ).shadowRoot!;
+        const innerHost = outerRoot.querySelector(
+          '#inner-host',
+        ) as HTMLElement;
+        return (
+          outerRoot.adoptedStyleSheets[0] ===
+          innerHost.shadowRoot!.adoptedStyleSheets[0]
+        );
+      }),
     ).toBe(true);
   });
 

@@ -2337,6 +2337,16 @@ export class Replayer {
       if (existing) {
         // Sheet already registered from an earlier host in this snapshot (shared sheet de-dup).
         // Reuse the same object so all hosts end up with the identical CSSStyleSheet instance.
+        // If this entry carries rules the existing sheet doesn't yet have (post-order replay:
+        // a deeper host's afterAppend fires before its ancestor's, so the ancestor's
+        // rule-carrying entry arrives after the descendant already created an empty sheet),
+        // apply them now so the shared sheet ends up populated.
+        if (rules.length) {
+          this.applyStyleSheetRule(
+            { source: IncrementalSource.StyleSheetRule, adds: rules },
+            existing,
+          );
+        }
         sheets.push(existing);
         continue;
       }
