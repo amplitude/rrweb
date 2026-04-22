@@ -322,10 +322,13 @@ export class Replayer {
         });
         this.adoptedStyleSheets = [];
 
-        this.snapshotAdoptedStyleSheetQueue.forEach(({ id, adoptedStyleSheets }) => {
-          const node = this.mirror.getNode(id);
-          if (node) this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
-        });
+        this.snapshotAdoptedStyleSheetQueue.forEach(
+          ({ id, adoptedStyleSheets }) => {
+            const node = this.mirror.getNode(id);
+            if (node)
+              this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
+          },
+        );
         this.snapshotAdoptedStyleSheetQueue = [];
       }
 
@@ -1213,9 +1216,7 @@ export class Replayer {
           if (this.usingVirtualDom) {
             // In virtual DOM mode the real nodes don't exist yet; defer until
             // the Flush handler materializes them via diff().
-            const id = (mirror as TMirror).getId(
-              builtNode as unknown as TNode,
-            );
+            const id = (mirror as TMirror).getId(builtNode as unknown as TNode);
             this.snapshotAdoptedStyleSheetQueue.push({
               id,
               adoptedStyleSheets: nodeSn.adoptedStyleSheets,
