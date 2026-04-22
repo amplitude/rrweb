@@ -73,6 +73,7 @@ import type {
   styleDeclarationData,
   adoptedStyleSheetData,
   serializedElementNodeWithId,
+  serializedAdoptedStyleSheet,
 } from '@amplitude/rrweb-types';
 import {
   polyfill,
@@ -1011,6 +1012,10 @@ export class Replayer {
           event.timestamp - events[0].timestamp,
           this.mirror,
         );
+      }
+      const sn = this.mirror.getMeta(builtNode);
+      if (sn && 'adoptedStyleSheets' in sn && sn.adoptedStyleSheets?.length) {
+        this.applySnapshotAdoptedStyleSheets(builtNode, sn.adoptedStyleSheets);
       }
       for (const plugin of this.config.plugins || []) {
         if (plugin.onBuild)
@@ -2301,6 +2306,39 @@ export class Replayer {
       ) as unknown as CSSStyleRule;
       rule.style.removeProperty(data.remove.property);
     }
+  }
+
+  private applySnapshotAdoptedStyleSheets(
+    node: Node,
+    adoptedStyleSheets: serializedAdoptedStyleSheet[],
+  ) {
+    let hostWindow: IWindow | null = null;
+    if (hasShadowRoot(node))
+      hostWindow = (node as Element).ownerDocument?.defaultView || null;
+    else if (node.nodeName === '#document')
+      hostWindow = (node as Document).defaultView;
+    if (!hostWindow) return;
+
+    const sheets: CSSStyleSheet[] = [];
+    for (const { styleId, rules } of adoptedStyleSheets) {
+      try {
+        const sheet = new hostWindow.CSSStyleSheet();
+        this.styleMirror.add(sheet, styleId);
+        this.applyStyleSheetRule(
+          { source: IncrementalSource.StyleSheetRule, adds: rules },
+          sheet,
+        );
+        sheets.push(sheet);
+      } catch (e) {
+        // browser doesn't support constructing StyleSheet
+      }
+    }
+
+    if (hasShadowRoot(node))
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      (node as HTMLElement).shadowRoot!.adoptedStyleSheets = sheets;
+    else if (node.nodeName === '#document')
+      (node as Document).adoptedStyleSheets = sheets;
   }
 
   private applyAdoptedStyleSheet(data: adoptedStyleSheetData) {

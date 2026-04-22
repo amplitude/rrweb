@@ -726,10 +726,16 @@ export enum NodeType {
   Comment,
 }
 
+export type serializedAdoptedStyleSheet = {
+  styleId: number;
+  rules: styleSheetAddRule[];
+};
+
 export type documentNode = {
   type: NodeType.Document;
   childNodes: serializedNodeWithId[];
   compatMode?: string;
+  adoptedStyleSheets?: serializedAdoptedStyleSheet[];
 };
 
 export type documentTypeNode = {
@@ -789,6 +795,7 @@ export type elementNode = {
   needBlock?: boolean;
   // This is a custom element or not.
   isCustom?: true;
+  adoptedStyleSheets?: serializedAdoptedStyleSheet[];
 };
 
 export type textNode = {

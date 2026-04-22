@@ -14,6 +14,8 @@ import type {
   serializedNodeWithId,
   serializedElementNodeWithId,
   elementNode,
+  documentNode,
+  serializedAdoptedStyleSheet,
   attributes,
   mediaAttributes,
   DataURLOptions,
@@ -26,6 +28,7 @@ import {
   maskInputValue,
   isNativeShadowDom,
   stringifyStylesheet,
+  stringifyRule,
   getInputType,
   toLowerCase,
   extractFileExtension,
@@ -921,6 +924,19 @@ function slimDOMExcluded(
   return false;
 }
 
+function serializeAdoptedStyleSheets(
+  sheets: CSSStyleSheet[] | readonly CSSStyleSheet[],
+  onAdoptedStyleSheet: (sheet: CSSStyleSheet) => number,
+): serializedAdoptedStyleSheet[] {
+  return Array.from(sheets).map((sheet) => ({
+    styleId: onAdoptedStyleSheet(sheet),
+    rules: Array.from(sheet.cssRules || [], (rule, index) => ({
+      rule: stringifyRule(rule, sheet.href),
+      index,
+    })),
+  }));
+}
+
 export function serializeNodeWithId(
   n: Node,
   options: {
@@ -945,6 +961,7 @@ export function serializeNodeWithId(
     recordCanvas?: boolean;
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
+    onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
       node: serializedElementNodeWithId,
@@ -977,6 +994,7 @@ export function serializeNodeWithId(
     inlineImages = false,
     recordCanvas = false,
     onSerialize,
+    onAdoptedStyleSheet,
     onIframeLoad,
     iframeLoadTimeout = 5000,
     onStylesheetLoad,
@@ -1057,8 +1075,22 @@ export function serializeNodeWithId(
     // this property was not needed in replay side
     delete serializedNode.needBlock;
     const shadowRootEl = dom.shadowRoot(n);
-    if (shadowRootEl && isNativeShadowDom(shadowRootEl))
+    if (shadowRootEl && isNativeShadowDom(shadowRootEl)) {
       serializedNode.isShadowHost = true;
+      if (onAdoptedStyleSheet && shadowRootEl.adoptedStyleSheets?.length) {
+        serializedNode.adoptedStyleSheets = serializeAdoptedStyleSheets(
+          shadowRootEl.adoptedStyleSheets,
+          onAdoptedStyleSheet,
+        );
+      }
+    }
+  }
+  if (serializedNode.type === NodeType.Document && onAdoptedStyleSheet) {
+    const doc = n as Document;
+    if (doc.adoptedStyleSheets?.length) {
+      (serializedNode as documentNode).adoptedStyleSheets =
+        serializeAdoptedStyleSheets(doc.adoptedStyleSheets, onAdoptedStyleSheet);
+    }
   }
   if (
     (serializedNode.type === NodeType.Document ||
@@ -1093,6 +1125,7 @@ export function serializeNodeWithId(
       recordCanvas,
       preserveWhiteSpace,
       onSerialize,
+      onAdoptedStyleSheet,
       onIframeLoad,
       iframeLoadTimeout,
       onStylesheetLoad,
@@ -1265,6 +1298,7 @@ function snapshot(
     recordCanvas?: boolean;
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
+    onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
       node: serializedElementNodeWithId,
@@ -1296,6 +1330,7 @@ function snapshot(
     dataURLOptions,
     preserveWhiteSpace,
     onSerialize,
+    onAdoptedStyleSheet,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,
@@ -1365,6 +1400,7 @@ function snapshot(
     recordCanvas,
     preserveWhiteSpace,
     onSerialize,
+    onAdoptedStyleSheet,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,

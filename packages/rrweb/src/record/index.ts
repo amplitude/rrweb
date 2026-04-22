@@ -406,6 +406,7 @@ export function record<T = eventWithTime>(
           shadowDomManager.addShadowRoot(dom.shadowRoot(n as Node)!, document);
         }
       },
+      onAdoptedStyleSheet: (sheet) => stylesheetManager.styleMirror.add(sheet),
       onIframeLoad: (iframe, childSn) => {
         iframeManager.attachIframe(iframe, childSn);
         shadowDomManager.observeAttachShadow(iframe);
