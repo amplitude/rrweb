@@ -716,7 +716,9 @@ describe('record', function (this: ISuite) {
       }
       return null;
     };
-    expect(findNode(fullSnapshot!.data.node)?.adoptedStyleSheets).toBeUndefined();
+    expect(
+      findNode(fullSnapshot!.data.node)?.adoptedStyleSheets,
+    ).toBeUndefined();
 
     // An incremental AdoptedStyleSheet event with CSS rules must be emitted instead
     const hasIncrementalWithRules = ctx.events.some(
