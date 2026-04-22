@@ -1188,7 +1188,10 @@ export class Replayer {
       if (!this.usingVirtualDom) {
         const sn = this.mirror.getMeta(builtNode);
         if (sn && 'adoptedStyleSheets' in sn && sn.adoptedStyleSheets?.length) {
-          this.applySnapshotAdoptedStyleSheets(builtNode, sn.adoptedStyleSheets);
+          this.applySnapshotAdoptedStyleSheets(
+            builtNode,
+            sn.adoptedStyleSheets,
+          );
         }
       }
       // Skip the plugin onBuild callback in the virtual dom mode
@@ -2347,8 +2350,7 @@ export class Replayer {
       }
     }
 
-    if (hasShadowRoot(node))
-      node.shadowRoot.adoptedStyleSheets = sheets;
+    if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
     else if (node.nodeName === '#document')
       (node as Document).adoptedStyleSheets = sheets;
   }
