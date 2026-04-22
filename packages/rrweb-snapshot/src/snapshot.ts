@@ -1089,7 +1089,10 @@ export function serializeNodeWithId(
     const doc = n as Document;
     if (doc.adoptedStyleSheets?.length) {
       (serializedNode as documentNode).adoptedStyleSheets =
-        serializeAdoptedStyleSheets(doc.adoptedStyleSheets, onAdoptedStyleSheet);
+        serializeAdoptedStyleSheets(
+          doc.adoptedStyleSheets,
+          onAdoptedStyleSheet,
+        );
     }
   }
   if (
