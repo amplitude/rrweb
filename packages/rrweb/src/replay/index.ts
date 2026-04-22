@@ -2323,7 +2323,7 @@ export class Replayer {
   ) {
     let hostWindow: IWindow | null = null;
     if (hasShadowRoot(node))
-      hostWindow = (node as Element).ownerDocument?.defaultView || null;
+      hostWindow = node.ownerDocument?.defaultView || null;
     else if (node.nodeName === '#document')
       hostWindow = (node as Document).defaultView;
     if (!hostWindow) return;
