@@ -28,7 +28,13 @@ const events: eventWithTime[] = [
             tagName: 'html',
             attributes: {},
             childNodes: [
-              { type: 2, tagName: 'head', attributes: {}, childNodes: [], id: 4 },
+              {
+                type: 2,
+                tagName: 'head',
+                attributes: {},
+                childNodes: [],
+                id: 4,
+              },
               {
                 type: 2,
                 tagName: 'body',
