@@ -1153,8 +1153,9 @@ describe('replayer', function () {
       await contentDocument!.evaluate(
         () =>
           window.getComputedStyle(
-            (document.querySelector('#outer-host') as HTMLElement)
-              .shadowRoot!.querySelector('span')!,
+            (
+              document.querySelector('#outer-host') as HTMLElement
+            ).shadowRoot!.querySelector('span')!,
           ).color,
       ),
     ).toEqual('rgb(255, 0, 0)');
@@ -1174,12 +1175,9 @@ describe('replayer', function () {
     // Outer and inner shadow roots must share the same CSSStyleSheet object
     expect(
       await contentDocument!.evaluate(() => {
-        const outerRoot = (
-          document.querySelector('#outer-host') as HTMLElement
-        ).shadowRoot!;
-        const innerHost = outerRoot.querySelector(
-          '#inner-host',
-        ) as HTMLElement;
+        const outerRoot = (document.querySelector('#outer-host') as HTMLElement)
+          .shadowRoot!;
+        const innerHost = outerRoot.querySelector('#inner-host') as HTMLElement;
         return (
           outerRoot.adoptedStyleSheets[0] ===
           innerHost.shadowRoot!.adoptedStyleSheets[0]
