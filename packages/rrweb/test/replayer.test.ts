@@ -5,6 +5,7 @@ import * as path from 'path';
 import type * as puppeteer from 'puppeteer';
 import { vi } from 'vitest';
 import adoptedStyleSheet from './events/adopted-style-sheet';
+import adoptedStyleSheetInSnapshot from './events/adopted-style-sheet-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
@@ -1044,6 +1045,44 @@ describe('replayer', function () {
 
     await page.evaluate('replayer.pause(630);');
     await check600ms();
+  });
+
+  it('can replay adoptedStyleSheets embedded inline in the full snapshot', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    const checkCorrectness = async () => {
+      // Shadow root's adoptedStyleSheet (styleId 1) serialized inline in snapshot
+      expect(
+        await contentDocument!.evaluate(
+          () =>
+            window.getComputedStyle(
+              document.querySelector('#shadow-host')!.shadowRoot!.querySelector('span')!,
+            ).color,
+        ),
+      ).toEqual('rgb(255, 0, 0)');
+
+      // Document-level adoptedStyleSheet (styleId 2) serialized inline in snapshot
+      expect(
+        await contentDocument!.evaluate(
+          () => window.getComputedStyle(document.body).backgroundColor,
+        ),
+      ).toEqual('rgb(0, 128, 0)');
+    };
+    await checkCorrectness();
+
+    // Verify correctness also holds in fast-forward mode
+    await page.evaluate('replayer.play(0);');
+    await waitForRAF(page);
+    await page.evaluate('replayer.pause(300);');
+    await checkCorrectness();
   });
 
   it('should replay document replacement events without warnings or errors', async () => {
