@@ -1064,7 +1064,9 @@ describe('replayer', function () {
         await contentDocument!.evaluate(
           () =>
             window.getComputedStyle(
-              document.querySelector('#shadow-host')!.shadowRoot!.querySelector('span')!,
+              document
+                .querySelector('#shadow-host')!
+                .shadowRoot!.querySelector('span')!,
             ).color,
         ),
       ).toEqual('rgb(255, 0, 0)');

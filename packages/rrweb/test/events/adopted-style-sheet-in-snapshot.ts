@@ -28,7 +28,13 @@ const events: eventWithTime[] = [
             tagName: 'html',
             attributes: {},
             childNodes: [
-              { type: 2, tagName: 'head', attributes: {}, childNodes: [], id: 4 },
+              {
+                type: 2,
+                tagName: 'head',
+                attributes: {},
+                childNodes: [],
+                id: 4,
+              },
               {
                 type: 2,
                 tagName: 'body',
@@ -74,7 +80,9 @@ const events: eventWithTime[] = [
         adoptedStyleSheets: [
           {
             styleId: 2,
-            rules: [{ rule: 'body { background-color: rgb(0, 128, 0); }', index: 0 }],
+            rules: [
+              { rule: 'body { background-color: rgb(0, 128, 0); }', index: 0 },
+            ],
           },
         ],
       },
