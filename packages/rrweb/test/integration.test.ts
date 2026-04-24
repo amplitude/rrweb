@@ -1192,19 +1192,18 @@ describe('record integration tests', function (this: ISuite) {
       document.body.appendChild(outer);
       const outerSRoot = outer.attachShadow({ mode: 'closed' });
 
-      sleep(1)
-        .then(() => {
-          // Inner host lives inside the outer closed shadow root.
-          const inner = document.createElement('div');
-          inner.id = 'inner-host';
-          outerSRoot.appendChild(inner);
-          const innerSRoot = inner.attachShadow({ mode: 'closed' });
-          return sleep(1).then(() => {
-            const span = document.createElement('span');
-            span.textContent = 'nested closed shadow content';
-            innerSRoot.appendChild(span);
-          });
+      sleep(1).then(() => {
+        // Inner host lives inside the outer closed shadow root.
+        const inner = document.createElement('div');
+        inner.id = 'inner-host';
+        outerSRoot.appendChild(inner);
+        const innerSRoot = inner.attachShadow({ mode: 'closed' });
+        return sleep(1).then(() => {
+          const span = document.createElement('span');
+          span.textContent = 'nested closed shadow content';
+          innerSRoot.appendChild(span);
         });
+      });
     });
     await page.waitForTimeout(50);
 
