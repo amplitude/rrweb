@@ -7,6 +7,7 @@ import {
   extractFileExtension,
   fixSafariColons,
   isNodeMetaEqual,
+  isShadowRoot,
 } from '../src/utils';
 import { NodeType } from '@amplitude/rrweb-types';
 import type {
@@ -271,6 +272,33 @@ describe('utils', () => {
       expect(out5).toEqual(`@import url("/foo.css;900;800\\"") layer;`);
     });
   });
+  describe('isShadowRoot()', () => {
+    it('returns true for an open shadow root', () => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const root = host.attachShadow({ mode: 'open' });
+      expect(isShadowRoot(root)).toBe(true);
+      host.remove();
+    });
+
+    it('returns true for a closed shadow root', () => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const root = host.attachShadow({ mode: 'closed' });
+      // element.shadowRoot is null for closed mode, so the old check would fail.
+      expect(host.shadowRoot).toBeNull();
+      expect(isShadowRoot(root)).toBe(true);
+      host.remove();
+    });
+
+    it('returns false for regular elements, text nodes, and document fragments', () => {
+      expect(isShadowRoot(document.createElement('div'))).toBe(false);
+      expect(isShadowRoot(document.createTextNode('hi'))).toBe(false);
+      expect(isShadowRoot(document.createDocumentFragment())).toBe(false);
+      expect(isShadowRoot(document.body)).toBe(false);
+    });
+  });
+
   describe('fixSafariColons', () => {
     it('parses : in attribute selectors correctly', () => {
       const out1 = fixSafariColons('[data-foo] { color: red; }');

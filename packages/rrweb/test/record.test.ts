@@ -750,17 +750,26 @@ describe('record', function (this: ISuite) {
     // AFTER this evaluate has already returned.  That way the MutationObserver
     // microtask (which calls emit → Puppeteer binding) runs outside any active
     // page.evaluate() context, avoiding a Puppeteer callFunctionOn deadlock.
+    // A nested setTimeout exercises the ongoing observer (not just the first tick).
     await ctx.page.evaluate(() => {
       setTimeout(() => {
         const inner = document.createElement('span');
         inner.id = 'inside-closed-shadow';
         inner.textContent = 'closed shadow content';
         (window as any).__closedSRoot.appendChild(inner);
+
+        // Second mutation: proves the observer remains attached after the first event.
+        setTimeout(() => {
+          const second = document.createElement('p');
+          second.id = 'also-inside-closed-shadow';
+          second.textContent = 'second closed shadow mutation';
+          (window as any).__closedSRoot.appendChild(second);
+        }, 10);
       }, 0);
     });
 
-    // Give the setTimeout + mutation flush time to complete.
-    await ctx.page.waitForTimeout(100);
+    // Give both setTimeout callbacks + mutation flush time to complete.
+    await ctx.page.waitForTimeout(200);
 
     // Should have at least one incremental mutation event
     const mutations = ctx.events.filter(
@@ -770,13 +779,15 @@ describe('record', function (this: ISuite) {
     );
     expect(mutations.length).toBeGreaterThan(0);
 
-    // The mutation must include an add of a node with isShadow:true (child of a shadow root)
+    // Both direct children of the shadow root must carry isShadow:true.
     const allAdds = mutations.flatMap((e) => (e.data as any).adds ?? []);
-    const shadowAdd = allAdds.find((a: any) => a.node?.isShadow === true);
-    expect(shadowAdd).toBeDefined();
+    const shadowAdds = allAdds.filter((a: any) => a.node?.isShadow === true);
+    expect(shadowAdds.length).toBeGreaterThanOrEqual(2);
 
-    // The added span should carry the right tag
-    expect(shadowAdd.node.tagName).toBe('span');
+    // Verify the expected element tags were captured.
+    const shadowTags = shadowAdds.map((a: any) => a.node.tagName);
+    expect(shadowTags).toContain('span');
+    expect(shadowTags).toContain('p');
   });
 
   it('captures stylesheets in iframes with `blob:` url', async () => {
