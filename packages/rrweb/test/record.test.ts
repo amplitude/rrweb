@@ -730,6 +730,55 @@ describe('record', function (this: ISuite) {
     expect(hasIncrementalWithRules).toBe(true);
   });
 
+  it('captures mutations inside a closed-mode shadow root', async () => {
+    // Phase 1: start recording and attach closed shadow root (synchronous evaluate,
+    // no MutationObserver callbacks — just setup).
+    await ctx.page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'closed-shadow-host';
+      document.body.appendChild(host);
+
+      const { rrweb, emit } = window as unknown as IWindow;
+      rrweb.record({ emit });
+
+      // attachShadow({mode:'closed'}) returns the root but element.shadowRoot is null.
+      // The fix uses `sRoot` directly instead of dom.shadowRoot(this) so this is observed.
+      (window as any).__closedSRoot = host.attachShadow({ mode: 'closed' });
+    });
+
+    // Phase 2: schedule the DOM mutation via setTimeout so it fires as a new macrotask
+    // AFTER this evaluate has already returned.  That way the MutationObserver
+    // microtask (which calls emit → Puppeteer binding) runs outside any active
+    // page.evaluate() context, avoiding a Puppeteer callFunctionOn deadlock.
+    await ctx.page.evaluate(() => {
+      setTimeout(() => {
+        const inner = document.createElement('span');
+        inner.id = 'inside-closed-shadow';
+        inner.textContent = 'closed shadow content';
+        (window as any).__closedSRoot.appendChild(inner);
+      }, 0);
+    });
+
+    // Give the setTimeout + mutation flush time to complete.
+    await ctx.page.waitForTimeout(100);
+
+    // Should have at least one incremental mutation event
+    const mutations = ctx.events.filter(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as any).source === IncrementalSource.Mutation,
+    );
+    expect(mutations.length).toBeGreaterThan(0);
+
+    // The mutation must include an add of a node with isShadow:true (child of a shadow root)
+    const allAdds = mutations.flatMap((e) => (e.data as any).adds ?? []);
+    const shadowAdd = allAdds.find((a: any) => a.node?.isShadow === true);
+    expect(shadowAdd).toBeDefined();
+
+    // The added span should carry the right tag
+    expect(shadowAdd.node.tagName).toBe('span');
+  });
+
   it('captures stylesheets in iframes with `blob:` url', async () => {
     await ctx.page.evaluate(() => {
       const iframe = document.createElement('iframe');
