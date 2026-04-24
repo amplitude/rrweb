@@ -730,6 +730,66 @@ describe('record', function (this: ISuite) {
     expect(hasIncrementalWithRules).toBe(true);
   });
 
+  it('captures mutations inside a closed-mode shadow root', async () => {
+    // Phase 1: start recording and attach closed shadow root (synchronous evaluate,
+    // no MutationObserver callbacks — just setup).
+    await ctx.page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'closed-shadow-host';
+      document.body.appendChild(host);
+
+      const { rrweb, emit } = window as unknown as IWindow;
+      rrweb.record({ emit });
+
+      // attachShadow({mode:'closed'}) returns the root but element.shadowRoot is null.
+      // The fix uses `sRoot` directly instead of dom.shadowRoot(this) so this is observed.
+      (window as any).__closedSRoot = host.attachShadow({ mode: 'closed' });
+    });
+
+    // Phase 2: schedule the DOM mutation via setTimeout so it fires as a new macrotask
+    // AFTER this evaluate has already returned.  That way the MutationObserver
+    // microtask (which calls emit → Puppeteer binding) runs outside any active
+    // page.evaluate() context, avoiding a Puppeteer callFunctionOn deadlock.
+    // A nested setTimeout exercises the ongoing observer (not just the first tick).
+    await ctx.page.evaluate(() => {
+      setTimeout(() => {
+        const inner = document.createElement('span');
+        inner.id = 'inside-closed-shadow';
+        inner.textContent = 'closed shadow content';
+        (window as any).__closedSRoot.appendChild(inner);
+
+        // Second mutation: proves the observer remains attached after the first event.
+        setTimeout(() => {
+          const second = document.createElement('p');
+          second.id = 'also-inside-closed-shadow';
+          second.textContent = 'second closed shadow mutation';
+          (window as any).__closedSRoot.appendChild(second);
+        }, 10);
+      }, 0);
+    });
+
+    // Give both setTimeout callbacks + mutation flush time to complete.
+    await ctx.page.waitForTimeout(200);
+
+    // Should have at least one incremental mutation event
+    const mutations = ctx.events.filter(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as any).source === IncrementalSource.Mutation,
+    );
+    expect(mutations.length).toBeGreaterThan(0);
+
+    // Both direct children of the shadow root must carry isShadow:true.
+    const allAdds = mutations.flatMap((e) => (e.data as any).adds ?? []);
+    const shadowAdds = allAdds.filter((a: any) => a.node?.isShadow === true);
+    expect(shadowAdds.length).toBeGreaterThanOrEqual(2);
+
+    // Verify the expected element tags were captured.
+    const shadowTags = shadowAdds.map((a: any) => a.node.tagName);
+    expect(shadowTags).toContain('span');
+    expect(shadowTags).toContain('p');
+  });
+
   it('captures stylesheets in iframes with `blob:` url', async () => {
     await ctx.page.evaluate(() => {
       const iframe = document.createElement('iframe');

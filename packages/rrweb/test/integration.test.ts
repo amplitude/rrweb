@@ -1135,6 +1135,84 @@ describe('record integration tests', function (this: ISuite) {
     await assertSnapshot(snapshots);
   });
 
+  it('should record closed-mode shadow DOM mutations', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+
+    await page.evaluate(() => {
+      const sleep = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
+
+      const host = document.createElement('div');
+      host.id = 'closed-host';
+      document.body.appendChild(host);
+
+      // attachShadow({mode:'closed'}) — element.shadowRoot will be null.
+      // The fix stores the return value so mutations are observed.
+      const sRoot = host.attachShadow({ mode: 'closed' });
+
+      sleep(1)
+        .then(() => {
+          const span = document.createElement('span');
+          span.textContent = 'inside closed shadow';
+          sRoot.appendChild(span);
+          return sleep(1);
+        })
+        .then(() => {
+          const p = document.createElement('p');
+          p.textContent = 'second element in closed shadow';
+          sRoot.appendChild(p);
+          return sleep(1);
+        })
+        .then(() => {
+          // Mutate an existing child to exercise ongoing observer.
+          (sRoot.firstChild as HTMLElement).textContent = 'mutated text';
+        });
+    });
+    await page.waitForTimeout(50);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    await assertSnapshot(snapshots);
+  });
+
+  it('should record nested closed-mode shadow DOM', async () => {
+    const page: puppeteer.Page = await browser.newPage();
+    await page.goto('about:blank');
+    await page.setContent(getHtml.call(this, 'blank.html'));
+
+    await page.evaluate(() => {
+      const sleep = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
+
+      const outer = document.createElement('div');
+      outer.id = 'outer-host';
+      document.body.appendChild(outer);
+      const outerSRoot = outer.attachShadow({ mode: 'closed' });
+
+      sleep(1).then(() => {
+        // Inner host lives inside the outer closed shadow root.
+        const inner = document.createElement('div');
+        inner.id = 'inner-host';
+        outerSRoot.appendChild(inner);
+        const innerSRoot = inner.attachShadow({ mode: 'closed' });
+        return sleep(1).then(() => {
+          const span = document.createElement('span');
+          span.textContent = 'nested closed shadow content';
+          innerSRoot.appendChild(span);
+        });
+      });
+    });
+    await page.waitForTimeout(50);
+
+    const snapshots = (await page.evaluate(
+      'window.snapshots',
+    )) as eventWithTime[];
+    await assertSnapshot(snapshots);
+  });
+
   it('should record nested iframes and shadow doms', async () => {
     const page: puppeteer.Page = await browser.newPage();
     await page.goto('about:blank');

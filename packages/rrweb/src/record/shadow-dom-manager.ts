@@ -130,12 +130,12 @@ export class ShadowDomManager {
         function (original: (init: ShadowRootInit) => ShadowRoot) {
           return function (this: Element, option: ShadowRootInit) {
             const sRoot = original.call(this, option);
-            // For the shadow dom elements in the document, monitor their dom mutations.
+            // Use sRoot directly (the return value) rather than element.shadowRoot,
+            // because element.shadowRoot returns null for closed-mode shadow roots.
+            // For shadow dom elements in the document, monitor their dom mutations.
             // For shadow dom elements that aren't in the document yet,
             // we start monitoring them once their shadow dom host is appended to the document.
-            const shadowRootEl = dom.shadowRoot(this);
-            if (shadowRootEl && inDom(this))
-              manager.addShadowRoot(shadowRootEl, doc);
+            if (sRoot && inDom(this)) manager.addShadowRoot(sRoot, doc);
             return sRoot;
           };
         },
