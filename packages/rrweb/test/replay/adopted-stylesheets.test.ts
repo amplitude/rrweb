@@ -9,7 +9,7 @@
  * constructor, the replay engine clones the sheet before adopting it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
+import { EventType } from '@amplitude/rrweb-types';
 import type { eventWithTime } from '@amplitude/rrweb-types';
 
 import { Replayer } from '../../src/replay';
@@ -81,8 +81,9 @@ function makeReplayer(): { replayer: Replayer; root: HTMLElement } {
     logger: { log: () => {}, warn: () => {} },
   });
   // Process the FullSnapshot event synchronously so mirror.getNode(1) is
-  // populated before tests run.  pause(1) sets baselineTime = T0+1, which
-  // places all T0-timestamped events into the sync batch, populating the mirror.
+  // populated before tests run.  pause(1) seeks to timeOffset=1ms (i.e.
+  // T0+1ms absolute), which places all T0-timestamped events in the sync
+  // batch, populating the mirror.
   replayer.pause(1);
   return { replayer, root };
 }

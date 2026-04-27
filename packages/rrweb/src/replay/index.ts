@@ -2443,27 +2443,28 @@ export class Replayer {
         targetHost.nodeName === '#document'
           ? (targetHost as Document)
           : (targetHost as HTMLElement).ownerDocument ?? document;
-      const targetWindow = targetDoc.defaultView ?? window;
+      const targetWindow = targetDoc.defaultView;
+      if (!targetWindow) return;
 
       // Browsers disallow sharing a CSSStyleSheet instance across documents.
       // Clone any sheet that was constructed in a different window before adopting (SR-2960).
       const stylesToAdopt = styleIds
         .map((styleId) => this.styleMirror.getStyle(styleId))
-        .filter((style) => style !== null)
+        .filter((style): style is CSSStyleSheet => style !== null)
         .map((sheet) => {
-          if (sheet!.constructor === targetWindow.CSSStyleSheet) {
-            return sheet!;
+          if (sheet.constructor === targetWindow.CSSStyleSheet) {
+            return sheet;
           }
           try {
             const clone = new targetWindow.CSSStyleSheet();
-            for (const rule of Array.from(sheet!.cssRules)) {
+            for (const rule of Array.from(sheet.cssRules)) {
               clone.insertRule(rule.cssText, clone.cssRules.length);
             }
             return clone;
           } catch {
-            return sheet!;
+            return sheet;
           }
-        }) as CSSStyleSheet[];
+        });
       try {
         if (hasShadowRoot(targetHost))
           // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
