@@ -80,6 +80,10 @@ function makeReplayer(): { replayer: Replayer; root: HTMLElement } {
     showDebug: false,
     logger: { log: () => {}, warn: () => {} },
   });
+  // Process the FullSnapshot event synchronously so mirror.getNode(1) is
+  // populated before tests run.  pause(1) sets baselineTime = T0+1, which
+  // places all T0-timestamped events into the sync batch, populating the mirror.
+  replayer.pause(1);
   return { replayer, root };
 }
 
@@ -124,7 +128,8 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
 
     const mirror = (replayer as any).mirror;
     const docNode = mirror.getNode(1) as Document | null;
-    if (!docNode) return; // skip if mirror node not available in this env
+    expect(docNode).not.toBeNull();
+    if (!docNode) return;
 
     (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [100], styles: [] });
 
@@ -140,6 +145,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
 
     const mirror = (replayer as any).mirror;
     const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
     if (!docNode) return;
 
     (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [101], styles: [] });
@@ -149,6 +155,8 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(adopted).not.toBe(foreignSheet);
     // The clone should be a real CSSStyleSheet (same-window constructor)
     expect(adopted).toBeInstanceOf(window.CSSStyleSheet);
+    // The CSS rules must have been copied into the clone
+    expect(adopted?.cssRules[0]?.cssText).toContain('color: blue');
   });
 
   it('falls back to the original sheet when cloning fails', () => {
@@ -171,6 +179,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
 
     const mirror = (replayer as any).mirror;
     const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
     if (!docNode) return;
 
     // Should not throw even when cloning fails
@@ -190,6 +199,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
 
     const mirror = (replayer as any).mirror;
     const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
     if (!docNode) return;
 
     // Override adoptedStyleSheets setter on this node to throw
@@ -210,5 +220,31 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
       'adoptedStyleSheets assignment failed',
       expect.any(Error),
     );
+  });
+
+  it('applies an adopted stylesheet to a shadow host', () => {
+    const sheet = new window.CSSStyleSheet();
+    sheet.insertRule('p { color: green; }');
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(sheet, 200);
+
+    // Create a host element with a shadow root and register it in the mirror
+    const host = document.createElement('div');
+    host.attachShadow({ mode: 'open' });
+    document.body.appendChild(host);
+
+    const mirror = (replayer as any).mirror;
+    // Use a node id that won't collide with the snapshot ids (1–4)
+    const shadowHostId = 999;
+    mirror.add(host, { id: shadowHostId, type: 2, tagName: 'div', attributes: {}, childNodes: [] });
+
+    (replayer as any).applyAdoptedStyleSheet({ id: shadowHostId, styleIds: [200], styles: [] });
+
+    expect(host.shadowRoot!.adoptedStyleSheets).toHaveLength(1);
+    expect(host.shadowRoot!.adoptedStyleSheets[0]).toBe(sheet);
+
+    // Cleanup
+    host.remove();
   });
 });

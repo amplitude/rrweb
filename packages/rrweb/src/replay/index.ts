@@ -2442,7 +2442,7 @@ export class Replayer {
       const targetDoc =
         targetHost.nodeName === '#document'
           ? (targetHost as Document)
-          : (targetHost as HTMLElement).shadowRoot?.ownerDocument ?? document;
+          : (targetHost as HTMLElement).ownerDocument ?? document;
       const targetWindow = targetDoc.defaultView ?? window;
 
       // Browsers disallow sharing a CSSStyleSheet instance across documents.
@@ -2479,6 +2479,10 @@ export class Replayer {
        * In the live mode where events are transferred over network without strict order guarantee, some newer events are applied before some old events and adopted stylesheets may haven't been created.
        * This retry mechanism can help resolve this situation.
        */
+      // Retry only when some styleIds are not yet in the mirror (filtered out
+      // as null above). Cloning failures do NOT reduce the length — they fall
+      // back to the original sheet and still appear in stylesToAdopt — so this
+      // condition correctly targets only the "sheet not yet created" case.
       if (stylesToAdopt.length !== styleIds.length && count < MAX_RETRY_TIME) {
         setTimeout(
           () => adoptStyleSheets(targetHost, styleIds),
