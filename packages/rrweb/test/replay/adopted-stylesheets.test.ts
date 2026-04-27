@@ -131,7 +131,11 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(docNode).not.toBeNull();
     if (!docNode) return;
 
-    (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [100], styles: [] });
+    (replayer as any).applyAdoptedStyleSheet({
+      id: 1,
+      styleIds: [100],
+      styles: [],
+    });
 
     // The same instance should be used — no unnecessary clone
     expect(docNode.adoptedStyleSheets?.[0]).toBe(sheet);
@@ -148,7 +152,11 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(docNode).not.toBeNull();
     if (!docNode) return;
 
-    (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [101], styles: [] });
+    (replayer as any).applyAdoptedStyleSheet({
+      id: 1,
+      styleIds: [101],
+      styles: [],
+    });
 
     const adopted = docNode.adoptedStyleSheets?.[0];
     // A clone should have been made — different instance
@@ -184,7 +192,11 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
 
     // Should not throw even when cloning fails
     expect(() => {
-      (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [102], styles: [] });
+      (replayer as any).applyAdoptedStyleSheet({
+        id: 1,
+        styleIds: [102],
+        styles: [],
+      });
     }).not.toThrow();
 
     // Falls back gracefully — original sheet is adopted
@@ -213,7 +225,11 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     const warnSpy = vi.spyOn(replayer as any, 'warn');
 
     expect(() => {
-      (replayer as any).applyAdoptedStyleSheet({ id: 1, styleIds: [103], styles: [] });
+      (replayer as any).applyAdoptedStyleSheet({
+        id: 1,
+        styleIds: [103],
+        styles: [],
+      });
     }).not.toThrow();
 
     expect(warnSpy).toHaveBeenCalledWith(
@@ -237,9 +253,19 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     const mirror = (replayer as any).mirror;
     // Use a node id that won't collide with the snapshot ids (1–4)
     const shadowHostId = 999;
-    mirror.add(host, { id: shadowHostId, type: 2, tagName: 'div', attributes: {}, childNodes: [] });
+    mirror.add(host, {
+      id: shadowHostId,
+      type: 2,
+      tagName: 'div',
+      attributes: {},
+      childNodes: [],
+    });
 
-    (replayer as any).applyAdoptedStyleSheet({ id: shadowHostId, styleIds: [200], styles: [] });
+    (replayer as any).applyAdoptedStyleSheet({
+      id: shadowHostId,
+      styleIds: [200],
+      styles: [],
+    });
 
     expect(host.shadowRoot!.adoptedStyleSheets).toHaveLength(1);
     expect(host.shadowRoot!.adoptedStyleSheets[0]).toBe(sheet);
