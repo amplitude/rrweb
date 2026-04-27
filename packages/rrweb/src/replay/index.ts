@@ -2442,29 +2442,41 @@ export class Replayer {
       const targetDoc =
         targetHost.nodeName === '#document'
           ? (targetHost as Document)
-          : (targetHost as HTMLElement).ownerDocument ?? document;
+          : (targetHost as HTMLElement).ownerDocument;
+      if (!targetDoc) return;
       const targetWindow = targetDoc.defaultView;
       if (!targetWindow) return;
 
       // Browsers disallow sharing a CSSStyleSheet instance across documents.
       // Clone any sheet that was constructed in a different window before adopting (SR-2960).
       const stylesToAdopt = styleIds
-        .map((styleId) => this.styleMirror.getStyle(styleId))
-        .filter((style): style is CSSStyleSheet => style !== null)
-        .map((sheet) => {
+        .map((styleId) => {
+          const sheet = this.styleMirror.getStyle(styleId);
+          if (!sheet) return null;
           if (sheet.constructor === targetWindow.CSSStyleSheet) {
             return sheet;
           }
           try {
             const clone = new targetWindow.CSSStyleSheet();
-            for (const rule of Array.from(sheet.cssRules)) {
-              clone.insertRule(rule.cssText, clone.cssRules.length);
+            const rulesText = Array.from(sheet.cssRules)
+              .map((r) => r.cssText)
+              .join('\n');
+            if (typeof clone.replaceSync === 'function') {
+              clone.replaceSync(rulesText);
+            } else {
+              // Fallback for environments that don't support replaceSync
+              // (e.g. older jsdom). insertRule handles rules one-by-one.
+              for (const rule of Array.from(sheet.cssRules)) {
+                clone.insertRule(rule.cssText, clone.cssRules.length);
+              }
             }
+            this.styleMirror.replace(styleId, clone);
             return clone;
           } catch {
             return sheet;
           }
-        });
+        })
+        .filter((style): style is CSSStyleSheet => style !== null);
       try {
         if (hasShadowRoot(targetHost))
           // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

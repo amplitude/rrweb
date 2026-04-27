@@ -132,6 +132,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(docNode).not.toBeNull();
     if (!docNode) return;
 
+    // accessing private method for testing
     (replayer as any).applyAdoptedStyleSheet({
       id: 1,
       styleIds: [100],
@@ -153,6 +154,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(docNode).not.toBeNull();
     if (!docNode) return;
 
+    // accessing private method for testing
     (replayer as any).applyAdoptedStyleSheet({
       id: 1,
       styleIds: [101],
@@ -191,8 +193,20 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(docNode).not.toBeNull();
     if (!docNode) return;
 
+    // Simulate the browser's cross-document rejection: the fallback foreign
+    // sheet also cannot be adopted, so the setter throws.
+    Object.defineProperty(docNode, 'adoptedStyleSheets', {
+      set: () => {
+        throw new Error('cross-origin blocked');
+      },
+      configurable: true,
+    });
+
+    const warnSpy = vi.spyOn(replayer as any, 'warn');
+
     // Should not throw even when cloning fails
     expect(() => {
+      // accessing private method for testing
       (replayer as any).applyAdoptedStyleSheet({
         id: 1,
         styleIds: [102],
@@ -200,8 +214,10 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
       });
     }).not.toThrow();
 
-    // Falls back gracefully — original sheet is adopted
-    expect(docNode.adoptedStyleSheets?.[0]).toBe(brokenSheet);
+    // The fallback foreign sheet also fails the adoptedStyleSheets assignment
+    // (same cross-document restriction), so the outer try/catch fires and
+    // warn() is called instead.
+    expect(warnSpy).toHaveBeenCalled();
   });
 
   it('calls warn() and does not throw when adoptedStyleSheets assignment is blocked', () => {
@@ -226,6 +242,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     const warnSpy = vi.spyOn(replayer as any, 'warn');
 
     expect(() => {
+      // accessing private method for testing
       (replayer as any).applyAdoptedStyleSheet({
         id: 1,
         styleIds: [103],
@@ -262,6 +279,7 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
       childNodes: [],
     });
 
+    // accessing private method for testing
     (replayer as any).applyAdoptedStyleSheet({
       id: shadowHostId,
       styleIds: [200],
