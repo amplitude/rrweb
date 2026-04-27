@@ -170,8 +170,12 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(adopted?.cssRules[0]?.cssText).toContain('color: blue');
   });
 
-  it('falls back to the original sheet when cloning fails', () => {
-    // cssRules getter throws to simulate a cross-origin restriction
+  it('falls back to the original sheet when inner cloning fails (cssRules throws)', () => {
+    // cssRules getter throws to simulate a cross-origin restriction that
+    // prevents copying rules. The clone attempt throws internally, so the
+    // fallback returns the original sheet. jsdom allows adoption of the
+    // fallback sheet, so the outer assignment does NOT throw and warn is
+    // not called.
     const brokenSheet = Object.create(CSSStyleSheet.prototype) as CSSStyleSheet;
     class ForeignCSSStyleSheet {}
     Object.defineProperty(brokenSheet, 'constructor', {
@@ -188,20 +192,6 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     const styleMirror = (replayer as any).styleMirror;
     styleMirror.add(brokenSheet, 102);
 
-    const mirror = (replayer as any).mirror;
-    const docNode = mirror.getNode(1) as Document | null;
-    expect(docNode).not.toBeNull();
-    if (!docNode) return;
-
-    // Simulate the browser's cross-document rejection: the fallback foreign
-    // sheet also cannot be adopted, so the setter throws.
-    Object.defineProperty(docNode, 'adoptedStyleSheets', {
-      set: () => {
-        throw new Error('cross-origin blocked');
-      },
-      configurable: true,
-    });
-
     const warnSpy = vi.spyOn(replayer as any, 'warn');
 
     // Should not throw even when cloning fails
@@ -214,10 +204,47 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
       });
     }).not.toThrow();
 
-    // The fallback foreign sheet also fails the adoptedStyleSheets assignment
-    // (same cross-document restriction), so the outer try/catch fires and
-    // warn() is called instead.
-    expect(warnSpy).toHaveBeenCalled();
+    // Inner clone failed → fallback sheet used → jsdom adoption succeeded →
+    // warn should NOT have been called.
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('calls warn() when clone succeeds but adoptedStyleSheets assignment throws', () => {
+    // Clone succeeds (cssRules is accessible) but the assignment setter throws,
+    // simulating a browser cross-document rejection at the adoption step.
+    const foreignSheet = makeForeignSheet(['div { color: red; }']);
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(foreignSheet, 104);
+
+    const mirror = (replayer as any).mirror;
+    const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
+    if (!docNode) return;
+
+    // Override the adoptedStyleSheets setter to throw after cloning succeeds.
+    Object.defineProperty(docNode, 'adoptedStyleSheets', {
+      set: () => {
+        throw new Error('cross-document assignment blocked');
+      },
+      configurable: true,
+    });
+
+    const warnSpy = vi.spyOn(replayer as any, 'warn');
+
+    expect(() => {
+      (replayer as any).applyAdoptedStyleSheet({
+        id: 1,
+        styleIds: [104],
+        styles: [],
+      });
+    }).not.toThrow();
+
+    // The outer try/catch must have caught the setter error and warned.
+    expect(warnSpy).toHaveBeenCalledWith(
+      'adoptedStyleSheets assignment failed',
+      expect.any(Error),
+    );
   });
 
   it('calls warn() and does not throw when adoptedStyleSheets assignment is blocked', () => {
@@ -254,6 +281,59 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
       'adoptedStyleSheets assignment failed',
       expect.any(Error),
     );
+  });
+
+  it('uses insertRule fallback when replaceSync is unavailable on the cloned sheet', () => {
+    // The replay engine uses the iframe's window (targetWindow) to construct
+    // the clone, not the test's outer window. In jsdom, these are separate
+    // window objects, so we must replace CSSStyleSheet on the iframe window.
+    const iframeWindow = (replayer as any).iframe.contentWindow as Window &
+      typeof globalThis;
+    const OriginalCSSStyleSheet = iframeWindow.CSSStyleSheet;
+    const insertRuleSpy = vi.fn();
+
+    // Build a subclass whose instances have replaceSync set to undefined,
+    // forcing the `typeof clone.replaceSync === 'function'` check to fail
+    // and driving execution into the insertRule fallback branch.
+    class FakeCSSStyleSheet extends OriginalCSSStyleSheet {
+      declare replaceSync: undefined;
+      insertRule = insertRuleSpy;
+    }
+    Object.defineProperty(FakeCSSStyleSheet.prototype, 'replaceSync', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+
+    Object.defineProperty(iframeWindow, 'CSSStyleSheet', {
+      value: FakeCSSStyleSheet,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const foreignSheet = makeForeignSheet(['p { color: purple; }']);
+      const styleMirror = (replayer as any).styleMirror;
+      styleMirror.add(foreignSheet, 105);
+
+      expect(() => {
+        (replayer as any).applyAdoptedStyleSheet({
+          id: 1,
+          styleIds: [105],
+          styles: [],
+        });
+      }).not.toThrow();
+
+      // insertRule should have been called once for the single non-@import rule
+      expect(insertRuleSpy).toHaveBeenCalledWith('p { color: purple; }', 0);
+    } finally {
+      // Always restore the original constructor to avoid test pollution.
+      Object.defineProperty(iframeWindow, 'CSSStyleSheet', {
+        value: OriginalCSSStyleSheet,
+        configurable: true,
+        writable: true,
+      });
+    }
   });
 
   it('applies an adopted stylesheet to a shadow host', () => {

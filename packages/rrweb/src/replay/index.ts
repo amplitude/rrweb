@@ -2380,7 +2380,35 @@ export class Replayer {
             existing,
           );
         }
-        sheets.push(existing);
+        // Guard against cross-document sharing: if the already-registered
+        // sheet belongs to a different window, clone it before adopting.
+        if (existing.constructor === hostWindow.CSSStyleSheet) {
+          sheets.push(existing);
+        } else {
+          try {
+            const clone = new hostWindow.CSSStyleSheet();
+            // @import rules are silently dropped by replaceSync/insertRule per
+            // spec and cannot be preserved without re-fetching from network.
+            const nonImportRules = Array.from(existing.cssRules).filter(
+              (r) => !r.cssText.trimStart().startsWith('@import'),
+            );
+            const rulesText = nonImportRules.map((r) => r.cssText).join('\n');
+            if (typeof clone.replaceSync === 'function') {
+              clone.replaceSync(rulesText);
+            } else {
+              for (const rule of nonImportRules) {
+                clone.insertRule(rule.cssText, clone.cssRules.length);
+              }
+            }
+            // Update the mirror optimistically before the assignment: any
+            // subsequent style-rule mutations must target the clone rather than
+            // the foreign sheet, so the mirror must point to the clone first.
+            this.styleMirror.replace(styleId, clone);
+            sheets.push(clone);
+          } catch {
+            sheets.push(existing);
+          }
+        }
         continue;
       }
       try {
@@ -2398,9 +2426,13 @@ export class Replayer {
       }
     }
 
-    if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
-    else if (node.nodeName === '#document')
-      (node as Document).adoptedStyleSheets = sheets;
+    try {
+      if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
+      else if (node.nodeName === '#document')
+        (node as Document).adoptedStyleSheets = sheets;
+    } catch (e) {
+      this.warn('adoptedStyleSheets assignment failed', e);
+    }
   }
 
   private applyAdoptedStyleSheet(data: adoptedStyleSheetData) {
@@ -2458,18 +2490,25 @@ export class Replayer {
           }
           try {
             const clone = new targetWindow.CSSStyleSheet();
-            const rulesText = Array.from(sheet.cssRules)
-              .map((r) => r.cssText)
-              .join('\n');
+            // @import rules are silently dropped by replaceSync/insertRule per
+            // spec (they must precede other rules and cannot be re-fetched
+            // without network access), so filter them out before copying.
+            const nonImportRules = Array.from(sheet.cssRules).filter(
+              (r) => !r.cssText.trimStart().startsWith('@import'),
+            );
+            const rulesText = nonImportRules.map((r) => r.cssText).join('\n');
             if (typeof clone.replaceSync === 'function') {
               clone.replaceSync(rulesText);
             } else {
               // Fallback for environments that don't support replaceSync
               // (e.g. older jsdom). insertRule handles rules one-by-one.
-              for (const rule of Array.from(sheet.cssRules)) {
+              for (const rule of nonImportRules) {
                 clone.insertRule(rule.cssText, clone.cssRules.length);
               }
             }
+            // Update the mirror optimistically before the assignment: any
+            // subsequent style-rule mutations must target the clone rather than
+            // the foreign sheet, so the mirror must point to the clone first.
             this.styleMirror.replace(styleId, clone);
             return clone;
           } catch {
