@@ -120,8 +120,15 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
   });
 
   it('uses a same-window sheet as-is without cloning', () => {
-    // A sheet whose constructor matches the target window's CSSStyleSheet
-    const sheet = new window.CSSStyleSheet();
+    // Construct the sheet from the replayer's iframe window — the same
+    // targetWindow that the replay engine will use for the constructor check.
+    // (In real browsers, the outer window and an iframe window have different
+    // CSSStyleSheet constructors; jsdom shares them as a quirk, so using the
+    // iframe window here makes the intent explicit and avoids relying on that
+    // jsdom quirk.)
+    const iframeWindow = (replayer as any).iframe.contentWindow as Window &
+      typeof globalThis;
+    const sheet = new iframeWindow.CSSStyleSheet();
     sheet.insertRule('div { color: red; }');
 
     const styleMirror = (replayer as any).styleMirror;
@@ -333,6 +340,98 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
         configurable: true,
         writable: true,
       });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // applySnapshotAdoptedStyleSheets path (issue 4)
+  // ---------------------------------------------------------------------------
+
+  it('applySnapshotAdoptedStyleSheets: clones a foreign-window sheet and adopts it on a document node', () => {
+    const foreignSheet = makeForeignSheet(['span { color: orange; }']);
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(foreignSheet, 300);
+
+    const mirror = (replayer as any).mirror;
+    const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
+    if (!docNode) return;
+
+    (replayer as any).applySnapshotAdoptedStyleSheets(docNode, [
+      { styleId: 300, rules: [] },
+    ]);
+
+    const adopted = docNode.adoptedStyleSheets?.[0];
+    // A clone must have been made — different instance from the foreign sheet
+    expect(adopted).not.toBe(foreignSheet);
+    // The clone is a real CSSStyleSheet
+    expect(adopted).toBeInstanceOf(
+      (replayer as any).iframe.contentWindow.CSSStyleSheet,
+    );
+    // CSS rules were copied into the clone
+    expect(adopted?.cssRules[0]?.cssText).toContain('color: orange');
+    // The mirror must have been updated to point at the clone
+    expect(styleMirror.getStyle(300)).toBe(adopted);
+  });
+
+  it('applySnapshotAdoptedStyleSheets: does not update mirror when outer assignment throws', () => {
+    const foreignSheet = makeForeignSheet(['h1 { font-size: 2em; }']);
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(foreignSheet, 301);
+
+    const mirror = (replayer as any).mirror;
+    const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
+    if (!docNode) return;
+
+    // Make the outer assignment throw so the mirror should NOT be updated.
+    Object.defineProperty(docNode, 'adoptedStyleSheets', {
+      set: () => {
+        throw new Error('blocked');
+      },
+      configurable: true,
+    });
+
+    const warnSpy = vi.spyOn(replayer as any, 'warn');
+
+    (replayer as any).applySnapshotAdoptedStyleSheets(docNode, [
+      { styleId: 301, rules: [] },
+    ]);
+
+    // warn must have been called (outer try/catch fired)
+    expect(warnSpy).toHaveBeenCalledWith(
+      'adoptedStyleSheets assignment failed',
+      expect.any(Error),
+    );
+    // The mirror must still point at the original foreign sheet — not a clone
+    expect(styleMirror.getStyle(301)).toBe(foreignSheet);
+  });
+
+  it('applySnapshotAdoptedStyleSheets: adopts sheet on shadow host', () => {
+    const iframeWindow = (replayer as any).iframe.contentWindow as Window &
+      typeof globalThis;
+    const sheet = new iframeWindow.CSSStyleSheet();
+    sheet.insertRule('em { font-style: normal; }');
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(sheet, 302);
+
+    // Create a host element with a shadow root
+    const host = document.createElement('div');
+    host.attachShadow({ mode: 'open' });
+    document.body.appendChild(host);
+
+    try {
+      (replayer as any).applySnapshotAdoptedStyleSheets(host, [
+        { styleId: 302, rules: [] },
+      ]);
+
+      expect(host.shadowRoot!.adoptedStyleSheets).toHaveLength(1);
+      expect(host.shadowRoot!.adoptedStyleSheets[0]).toBe(sheet);
+    } finally {
+      host.remove();
     }
   });
 
