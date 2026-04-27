@@ -175,6 +175,8 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(adopted).toBeInstanceOf(window.CSSStyleSheet);
     // The CSS rules must have been copied into the clone
     expect(adopted?.cssRules[0]?.cssText).toContain('color: blue');
+    // The styleMirror must have been updated to point at the clone
+    expect(styleMirror.getStyle(101)).toBe(adopted);
   });
 
   it('falls back to the original sheet when inner cloning fails (cssRules throws)', () => {
@@ -373,6 +375,39 @@ describe('adoptStyleSheets — cross-document CSSStyleSheet cloning (SR-2960)', 
     expect(adopted?.cssRules[0]?.cssText).toContain('color: orange');
     // The mirror must have been updated to point at the clone
     expect(styleMirror.getStyle(300)).toBe(adopted);
+  });
+
+  it('applySnapshotAdoptedStyleSheets: clone preserves pre-populated cssRules from the foreign sheet', () => {
+    // This verifies the rules-copy path in cloneSheetIntoWindow when the
+    // foreign sheet already has cssRules set (not added via the `rules`
+    // parameter). The clone must contain exactly those rules.
+    const foreignSheet = makeForeignSheet([
+      'h2 { color: teal; }',
+      'p { margin: 0; }',
+    ]);
+
+    const styleMirror = (replayer as any).styleMirror;
+    styleMirror.add(foreignSheet, 310);
+
+    const mirror = (replayer as any).mirror;
+    const docNode = mirror.getNode(1) as Document | null;
+    expect(docNode).not.toBeNull();
+    if (!docNode) return;
+
+    // Pass rules: [] — all content comes from the pre-populated cssRules above.
+    (replayer as any).applySnapshotAdoptedStyleSheets(docNode, [
+      { styleId: 310, rules: [] },
+    ]);
+
+    const adopted = docNode.adoptedStyleSheets?.[0];
+    // A clone must have been created (different object)
+    expect(adopted).not.toBe(foreignSheet);
+    // The clone must carry both rules from the source sheet
+    expect(adopted?.cssRules).toHaveLength(2);
+    expect(adopted?.cssRules[0]?.cssText).toContain('color: teal');
+    expect(adopted?.cssRules[1]?.cssText).toContain('margin: 0');
+    // The mirror must point at the clone
+    expect(styleMirror.getStyle(310)).toBe(adopted);
   });
 
   it('applySnapshotAdoptedStyleSheets: does not update mirror when outer assignment throws', () => {
