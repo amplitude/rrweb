@@ -1215,6 +1215,28 @@ describe('replayer', function () {
         return (outerSR?.querySelector('span') as HTMLElement)?.className;
       }),
     ).toBe(':hover');
+
+    // At 2000ms: hover regular span (id:16) again — cleanup from shadow roots
+    await page.evaluate('replayer.pause(2050);');
+    // Regular span gets hover back
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > span')?.className,
+      ),
+    ).toBe(':hover');
+    // Outer shadow span loses hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        return (outerSR?.querySelector('span') as HTMLElement)?.className;
+      }),
+    ).toBe('');
+    // Outer shadow host loses hover
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > div')?.className,
+      ),
+    ).toBe('');
   });
 
   it('should replay styles with :define pseudo-class', async () => {

@@ -530,8 +530,8 @@ export function buildNodeWithSN(
     let pendingCallbacks: Array<{ node: Node; id: number }> = [];
 
     const flushFragment = () => {
-      if (fragment && pendingCallbacks.length > 0) {
-        node.appendChild(fragment);
+      if (useFragment && pendingCallbacks.length > 0) {
+        node.appendChild(fragment!);
         // Note: with fragment batching, afterAppend fires after ALL batched
         // siblings are already in the DOM, not one-by-one as in the unbatched
         // path. No current callers depend on intermediate DOM state between
@@ -541,8 +541,8 @@ export function buildNodeWithSN(
             afterAppend(entry.node, entry.id);
           }
         }
+        // The fragment is now empty (appendChild moves its children) — reuse it.
         pendingCallbacks = [];
-        fragment = doc.createDocumentFragment();
       }
     };
 
@@ -593,8 +593,8 @@ export function buildNodeWithSN(
         if (afterAppend) {
           afterAppend(childNode, childN.id);
         }
-      } else if (fragment) {
-        fragment.appendChild(childNode);
+      } else if (useFragment) {
+        fragment!.appendChild(childNode);
         pendingCallbacks.push({ node: childNode, id: childN.id });
       } else {
         node.appendChild(childNode);
