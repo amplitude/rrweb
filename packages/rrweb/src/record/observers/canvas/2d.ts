@@ -2,6 +2,7 @@ import {
   type blockClass,
   CanvasContext,
   type canvasManagerMutationCallback,
+  type DataURLOptions,
   type IWindow,
   type listenerHandler,
 } from '@amplitude/rrweb-types';
@@ -13,6 +14,7 @@ export default function initCanvas2DMutationObserver(
   win: IWindow,
   blockClass: blockClass,
   blockSelector: string | null,
+  dataURLOptions: DataURLOptions = {},
 ): listenerHandler {
   const handlers: listenerHandler[] = [];
   const props2D = Object.getOwnPropertyNames(
@@ -41,15 +43,24 @@ export default function initCanvas2DMutationObserver(
             ...args: Array<unknown>
           ) {
             if (!isBlocked(this.canvas, blockClass, blockSelector, true)) {
-              // Using setTimeout as toDataURL can be heavy
-              // and we'd rather not block the main thread
+              // Using setTimeout to avoid blocking the main thread.
+              // serializeArgs may return Promises for canvas args (2D fast-path),
+              // so we await all of them before firing the callback.
               setTimeout(() => {
-                const recordArgs = serializeArgs(args, win, this);
-                cb(this.canvas, {
-                  type: CanvasContext['2D'],
-                  property: prop,
-                  args: recordArgs,
-                });
+                void (async () => {
+                  const rawArgs = serializeArgs(
+                    args,
+                    win,
+                    this,
+                    dataURLOptions,
+                  );
+                  const recordArgs = await Promise.all(rawArgs);
+                  cb(this.canvas, {
+                    type: CanvasContext['2D'],
+                    property: prop,
+                    args: recordArgs,
+                  });
+                })();
               }, 0);
             }
             return original.apply(this, args);

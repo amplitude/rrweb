@@ -16,7 +16,19 @@ import initCanvas2DMutationObserver from './2d';
 import initCanvasContextObserver from './canvas';
 import initCanvasWebGLMutationObserver from './webgl';
 import ImageBitmapDataURLWorker from '../../workers/image-bitmap-data-url-worker?worker&inline';
-import type { ImageBitmapDataURLRequestWorker } from '../../workers/image-bitmap-data-url-worker';
+import type {
+  ImageBitmapDataURLWorkerParams,
+  ImageBitmapDataURLWorkerResponse,
+} from '@amplitude/rrweb-types';
+
+/** Narrow worker interface for the FPS-sampling path only (no encode messages). */
+interface FPSWorker {
+  postMessage(
+    message: ImageBitmapDataURLWorkerParams,
+    transfer?: [ImageBitmap],
+  ): void;
+  onmessage: (message: MessageEvent<ImageBitmapDataURLWorkerResponse>) => void;
+}
 
 export type RafStamps = { latestId: number; invokeId: number | null };
 
@@ -78,7 +90,9 @@ export class CanvasManager {
     this.mirror = options.mirror;
 
     if (recordCanvas && sampling === 'all')
-      this.initCanvasMutationObserver(win, blockClass, blockSelector);
+      this.initCanvasMutationObserver(win, blockClass, blockSelector, {
+        dataURLOptions,
+      });
     if (recordCanvas && typeof sampling === 'number')
       this.initCanvasFPSObserver(sampling, win, blockClass, blockSelector, {
         dataURLOptions,
@@ -118,8 +132,7 @@ export class CanvasManager {
       true,
     );
     const snapshotInProgressMap: Map<number, boolean> = new Map();
-    const worker =
-      new ImageBitmapDataURLWorker() as ImageBitmapDataURLRequestWorker;
+    const worker = new ImageBitmapDataURLWorker() as unknown as FPSWorker;
     worker.onmessage = (e) => {
       const { id } = e.data;
       snapshotInProgressMap.set(id, false);
@@ -241,6 +254,7 @@ export class CanvasManager {
     win: IWindow,
     blockClass: blockClass,
     blockSelector: string | null,
+    options: { dataURLOptions: DataURLOptions },
   ): void {
     this.startRAFTimestamping();
     this.startPendingCanvasMutationFlusher();
@@ -256,6 +270,7 @@ export class CanvasManager {
       win,
       blockClass,
       blockSelector,
+      options.dataURLOptions,
     );
 
     const canvasWebGL1and2Reset = initCanvasWebGLMutationObserver(

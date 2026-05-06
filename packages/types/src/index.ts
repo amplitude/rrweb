@@ -529,6 +529,24 @@ export type ImageBitmapDataURLWorkerResponse =
       height: number;
     };
 
+/**
+ * Parameters for the one-shot "encode a canvas arg now" message sent to the
+ * image-bitmap-data-url worker by the 2D fast-path in serialize-args.
+ * Unlike the FPS-sampling params, this uses a string id (UUID) and does not
+ * perform transparency-dedup — it just encodes and returns.
+ */
+export type ImageBitmapEncodeWorkerParams = {
+  encodeId: string;
+  bitmap: ImageBitmap;
+  dataURLOptions: DataURLOptions;
+};
+
+export type ImageBitmapEncodeWorkerResponse = {
+  encodeId: string;
+  type: string;
+  base64: string;
+};
+
 export type fontParam = {
   family: string;
   fontSource: string;
