@@ -77,6 +77,32 @@
             await tick();
           }
         };
+
+        /**
+         * Variant used by the parity test: runs `cycles` full cycles but
+         * leaves the DOM populated at the end (mount + reconcile, no final
+         * unmount on the last cycle).  This ensures the post-workload source
+         * snapshot is meaningful — a ~1 000-node list — so the parity
+         * comparison can actually detect dropped-node regressions (SR-4160).
+         */
+        window.runWorkloadKeepFinalState = async function (cycles) {
+          cycles = cycles !== undefined ? cycles : 10;
+          for (var c = 0; c < cycles; c++) {
+            mount();
+            await tick();
+            reconcile();
+            await tick();
+            if (c < cycles - 1) {
+              unmount();
+              await tick();
+            }
+            // Last cycle: DOM stays mounted and reconciled.
+          }
+        };
+
+        // Expose mount/unmount so callers can control state directly.
+        window.mount = mount;
+        window.unmount = unmount;
       })();
     </script>
   </body>

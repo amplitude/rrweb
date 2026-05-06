@@ -23,13 +23,20 @@
     <div id="container"></div>
     <script>
       /**
-       * Creates a long page (500 sections × 200 px = 100 000 px tall) and
-       * performs a throttled scroll loop that moves the viewport through the
-       * entire page and back.
+       * Scroll-only benchmark fixture (SR-4160 major fix #6).
        *
-       * window.runWorkload(passes) scrolls through the page the given number of
-       * times (default 3).  Each pass emits ~(pageHeight / stepSize) scroll
-       * events; at stepSize=500px that is ~200 events per pass.
+       * NOTE: The 500 sections are built at parse time (below), BEFORE
+       * recording starts in the test harness.  This is intentional: the
+       * sections appear in the rrweb FullSnapshot, not as mutation events.
+       * This fixture therefore tests scroll-event recording fidelity only —
+       * it does NOT contribute mutation-parity coverage.
+       *
+       * If you need to measure mutation recording for a scroll-heavy scenario,
+       * create a separate fixture that constructs the DOM inside runWorkload().
+       *
+       * window.runWorkload(passes) scrolls through the page the given number
+       * of times (default 3).  Each pass emits ~(pageHeight / stepSize) scroll
+       * events; at stepSize=500 px that is ~200 events per pass.
        *
        * Resolves when all scroll passes are complete.
        */

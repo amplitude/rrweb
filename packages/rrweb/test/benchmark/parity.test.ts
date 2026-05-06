@@ -26,13 +26,7 @@ import type { eventWithTime } from '@amplitude/rrweb-types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { vi } from 'vitest';
-import { ISuite, launchPuppeteer, startServer } from '../utils';
-
-// Load the rrweb UMD bundle once at module scope (avoids the dist/main path bug).
-const rrwebCode = fs.readFileSync(
-  path.resolve(__dirname, '../../dist/rrweb.umd.cjs'),
-  'utf8',
-);
+import { ISuite, launchPuppeteer } from '../utils';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -43,18 +37,36 @@ interface ParityFixture {
   file: string;
   /** JS expression that drives the workload; must return a Promise. */
   workload: string;
+  /**
+   * Minimum number of source nodes expected after the workload completes.
+   * A single mount() produces ~1 000 nodes; 0 would indicate the DOM was
+   * unexpectedly empty (e.g. workload ended with unmount).
+   */
+  expectedMinSourceNodes: number;
 }
 
 const FIXTURES: ParityFixture[] = [
   {
     name: 'mutation-heavy',
     file: 'mutation-heavy.html',
-    workload: 'window.runWorkload(5)',
+    // Use runWorkloadKeepFinalState so the DOM is populated after the workload.
+    // runWorkload() ends with unmount(), leaving only <body><div id="root">.
+    // A near-empty snapshot makes parity meaningless: Pillar-1's dropped-<li>
+    // regression would pass because there's nothing to compare.  This variant
+    // runs the same mount→reconcile cycles but skips the final unmount, leaving
+    // ~1 000 <div class="item"> nodes on-screen for the snapshot comparison.
+    // (SR-4160 critical fix #1)
+    workload: 'window.runWorkloadKeepFinalState(5)',
+    // 1 000 items + the <body> wrapper + the #root div = at least 1 000 nodes.
+    // If this ever drops below 500 the workload likely ended with unmount().
+    expectedMinSourceNodes: 500,
   },
   {
     name: 'scroll-heavy',
     file: 'scroll-heavy.html',
     workload: 'window.runWorkload(1)',
+    // 500 sections × 3 descendant elements (div, h2, p) = ~1 500 nodes.
+    expectedMinSourceNodes: 100,
   },
 ];
 
@@ -72,14 +84,6 @@ interface NodeSnapshot {
   childCount: number;
 }
 
-/**
- * Attributes to ignore during comparison (rrweb internals, scroll, counters).
- */
-const IGNORED_ATTR_PREFIXES = ['data-rr-', 'rr_'];
-const IGNORED_ATTRS = new Set([
-  'style', // too volatile (scroll-induced transforms etc.)
-]);
-
 /** Serialized flat walk of a DOM subtree, returned from page.evaluate(). */
 type FlatSnapshot = NodeSnapshot[];
 
@@ -88,13 +92,27 @@ type FlatSnapshot = NodeSnapshot[];
 // ---------------------------------------------------------------------------
 
 describe('parity: record → replay DOM equality', () => {
-  vi.setConfig({ testTimeout: 600_000 });
+  // 120 s is well above the measured ~30 s for 5-cycle mutation-heavy workload;
+  // 10-minute timeouts hide flake and slow feedback.  (SR-4160 minor fix #13)
+  vi.setConfig({ testTimeout: 120_000 });
 
   let browser: ISuite['browser'];
-  let server: ISuite['server'];
+  // rrwebCode is loaded in beforeAll so a missing build gives a clear error
+  // ("Run 'yarn build' first") rather than silently using stale code.
+  // (SR-4160 minor fix #11)
+  let rrwebCode: string;
 
   beforeAll(async () => {
-    server = await startServer();
+    const bundlePath = path.resolve(__dirname, '../../dist/rrweb.umd.cjs');
+    if (!fs.existsSync(bundlePath)) {
+      throw new Error(
+        `rrweb bundle not found at ${bundlePath}. Run "yarn build" first.`,
+      );
+    }
+    rrwebCode = fs.readFileSync(bundlePath, 'utf8');
+
+    // startServer() is not used: fixtures are loaded via page.setContent(),
+    // not over HTTP.  (SR-4160 minor fix #12)
     browser = await launchPuppeteer({
       headless: 'new',
       args: [
@@ -107,7 +125,6 @@ describe('parity: record → replay DOM equality', () => {
 
   afterAll(async () => {
     await browser.close();
-    server.close();
   });
 
   for (const fixture of FIXTURES) {
@@ -207,8 +224,14 @@ describe('parity: record → replay DOM equality', () => {
       await recordPage.close();
 
       const events: eventWithTime[] = JSON.parse(eventsJson);
+      // Harness sanity: at least some events must have been recorded.
       expect(events.length).toBeGreaterThan(0);
-      expect(sourceSnapshot.length).toBeGreaterThan(0);
+      // Guard against the workload ending with unmount() and leaving an empty
+      // DOM — that would make the parity comparison meaningless.  The floor is
+      // per-fixture; see expectedMinSourceNodes above.  (SR-4160 major fix #5)
+      expect(sourceSnapshot.length).toBeGreaterThanOrEqual(
+        fixture.expectedMinSourceNodes,
+      );
 
       // ------------------------------------------------------------------
       // Phase 2 – Replay
@@ -234,26 +257,32 @@ describe('parity: record → replay DOM equality', () => {
         (window as any).__parity_events = JSON.parse(eventsJson);
       }, eventsJson);
 
-      // Replay by pausing at the last event's timestamp (fast-forward).
+      // Replay by pausing at the end of the recording.
+      // replayer.getMetaData().totalTime is the authoritative recording
+      // duration; we use it directly rather than recomputing lastTs - firstTs.
+      // We add 1 ms because the replayer applies events with timestamp <
+      // pauseTime (strict less-than): pausing at exactly totalTime skips the
+      // last event(s) whose relative timestamp equals totalTime.  +1 ms is the
+      // minimal deterministic fix — not a guess about workload duration.
+      // (SR-4160 major fix #7)
       await replayPage.evaluate(() => {
         const events: eventWithTime[] = (window as any).__parity_events;
-        const lastTs = events[events.length - 1]?.timestamp ?? 0;
-        const firstTs = events[0]?.timestamp ?? 0;
-        const totalTime = lastTs - firstTs;
 
         const { Replayer } = (window as any).rrweb;
         const container = document.getElementById('replay-root')!;
         const replayer = new Replayer(events, { root: container });
-        replayer.pause(totalTime + 500); // +500 ms buffer
+
+        const totalTime = replayer.getMetaData().totalTime;
+        replayer.pause(totalTime + 1); // +1 ms: include events at totalTime boundary
         (window as any).__parity_replayer = replayer;
       });
 
-      // Give the replayer a tick to settle.
+      // Give the replayer one animation frame to flush any pending DOM work
+      // queued during pause() (e.g. style/attribute patches applied lazily).
+      // A single rAF is sufficient; the double-rAF was vestigial and removed.
       await replayPage.evaluate(
         () =>
-          new Promise<void>((r) =>
-            requestAnimationFrame(() => requestAnimationFrame(r)),
-          ),
+          new Promise<void>((r) => requestAnimationFrame(r)),
       );
 
       // Capture the replay DOM snapshot from inside the replay iframe.
@@ -316,55 +345,68 @@ describe('parity: record → replay DOM equality', () => {
       // ------------------------------------------------------------------
       expect(replaySnapshot.length).toBeGreaterThan(0);
 
-      // The replay may have slightly more wrapper nodes (replayer-mouse etc.)
-      // so we compare source ⊆ replay by checking that every node in the
-      // source snapshot appears (in order) within the replay snapshot.
+      // Order-sensitive node matching: walk source and replay in parallel,
+      // skipping over replayer-injected wrapper nodes (e.g. the mouse-cursor
+      // div, replay-root wrapper) that have no source counterpart.
       //
-      // For a first draft this walk-and-match approach is intentionally lenient:
-      // it catches missing nodes and attribute corruption without false-positives
-      // from replayer chrome elements.
-      const replayIndex = new Map<string, NodeSnapshot[]>();
-      for (const node of replaySnapshot) {
-        const key = node.tagName;
-        if (!replayIndex.has(key)) replayIndex.set(key, []);
-        replayIndex.get(key)!.push(node);
+      // Matching strategy:
+      //   - For each source node (in document order) advance a replay cursor
+      //     until we find a node whose tagName + attributes + textContent all
+      //     match the source node, or we exhaust replay candidates.
+      //   - A node consumed by one source match cannot be reused by another —
+      //     this is the critical property that prevents Pillar-1's
+      //     "1 <li> in replay matches 1 000 source <li>s" false-positive.
+      //   - Order is enforced: the replay cursor only moves forward.
+      //
+      // The replayer may inject at most 1 extra node (mouse-cursor div) so we
+      // tolerate exactly 1 unmatched source node before failing.  This is
+      // stricter than a fractional threshold while still being noise-tolerant.
+      // (SR-4160 critical fixes #2, #3; major fix #4)
+      //
+      // TODO(SR-4160 follow-up): extend to detect sibling-reorder regressions
+      // by also asserting that the relative ordering of matched siblings within
+      // a common parent is preserved.
+
+      function nodesMatch(src: NodeSnapshot, rep: NodeSnapshot): boolean {
+        if (src.tagName !== rep.tagName) return false;
+        for (const [k, v] of Object.entries(src.attributes)) {
+          if (rep.attributes[k] !== v) return false;
+        }
+        if (src.textContent && rep.textContent !== src.textContent) return false;
+        return true;
       }
 
-      let matchFailures: string[] = [];
+      const matchFailures: string[] = [];
+      let replayCursor = 0;
+
       for (const srcNode of sourceSnapshot) {
-        const candidates = replayIndex.get(srcNode.tagName) ?? [];
-        const matched = candidates.some((rep) => {
-          // Check every attribute from source exists in replay.
-          for (const [k, v] of Object.entries(srcNode.attributes)) {
-            if (rep.attributes[k] !== v) return false;
+        // Advance replay cursor until we find a match or run out of candidates.
+        let found = false;
+        while (replayCursor < replaySnapshot.length) {
+          if (nodesMatch(srcNode, replaySnapshot[replayCursor])) {
+            replayCursor++; // consume this replay node
+            found = true;
+            break;
           }
-          // Text content must match (trimmed).
-          if (srcNode.textContent && rep.textContent !== srcNode.textContent) {
-            return false;
-          }
-          return true;
-        });
-        if (!matched) {
+          replayCursor++;
+        }
+        if (!found) {
           matchFailures.push(
-            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${
-              srcNode.textContent
-            }"`,
+            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${srcNode.textContent}"`,
           );
         }
       }
 
-      // Allow up to 1% mismatch (covers minor rrweb edge cases, timing jitter).
-      const mismatchRate =
-        matchFailures.length / Math.max(sourceSnapshot.length, 1);
-      const MISMATCH_THRESHOLD = 0.01;
+      // Allow at most 1 unmatched node (replayer may inject 1 mouse-cursor
+      // div that has no source counterpart; asserting <= 1 is more meaningful
+      // than a fractional rate on a 2-node snapshot).
+      const MAX_ALLOWED_MISMATCHES = 1;
 
-      if (mismatchRate > MISMATCH_THRESHOLD) {
+      if (matchFailures.length > MAX_ALLOWED_MISMATCHES) {
         const preview = matchFailures.slice(0, 10).join('\n  ');
         throw new Error(
           `[${fixture.name}] ${matchFailures.length}/${sourceSnapshot.length} ` +
-            `nodes (${(mismatchRate * 100).toFixed(
-              1,
-            )}%) did not match in replay.\n` +
+            `nodes did not match in replay (threshold: ${MAX_ALLOWED_MISMATCHES}).\n` +
             `First failures:\n  ${preview}`,
         );
       }
@@ -372,9 +414,7 @@ describe('parity: record → replay DOM equality', () => {
       console.log(
         `[${fixture.name}] parity OK: ${sourceSnapshot.length} source nodes, ` +
           `${replaySnapshot.length} replay nodes, ` +
-          `${matchFailures.length} unmatched (${(mismatchRate * 100).toFixed(
-            2,
-          )}%)`,
+          `${matchFailures.length} unmatched (threshold: ${MAX_ALLOWED_MISMATCHES})`,
       );
     });
   }

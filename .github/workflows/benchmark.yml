@@ -38,12 +38,16 @@ jobs:
         run: |
           cd packages/rrweb
           yarn build
-          PUPPETEER_HEADLESS=true xvfb-run --server-args="-screen 0 1920x1080x24" \
+          # xvfb-run removed: headless Chrome does not need a virtual display.
+          # exit_code capture removed: use steps.benchmark.outcome instead.
+          # --reporter=json writes a structured report that the summary step
+          # parses with node, avoiding fragile grep on colored unicode output.
+          PUPPETEER_HEADLESS=true \
             yarn vitest run --maxConcurrency 1 --no-file-parallelism \
               test/benchmark/recording-metrics.test.ts \
               test/benchmark/parity.test.ts \
-            --reporter=verbose 2>&1 | tee /tmp/benchmark-output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+            --reporter=verbose --reporter=json --outputFile=/tmp/benchmark-report.json \
+            2>&1 | tee /tmp/benchmark-output.txt
 
       - name: Write job summary
         if: always()
@@ -59,26 +63,31 @@ jobs:
           echo "**Status:** $( [ "$OUTCOME" = "success" ] && echo "✅ All passed" || echo "⚠️ Some tests failed (non-blocking)" )" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          # Parse pass/fail counts from vitest output
-          echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| File | Result |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -f "$OUTPUT_FILE" ]; then
-            for testfile in recording-metrics parity; do
-              if grep -q "✓ test/benchmark/${testfile}" "$OUTPUT_FILE" 2>/dev/null; then
-                TESTS=$(grep "✓ test/benchmark/${testfile}" "$OUTPUT_FILE" | grep -oP '\(\d+ tests?\)' | head -1)
-                echo "| \`test/benchmark/${testfile}.test.ts\` | ✅ Passed $TESTS |" >> "$GITHUB_STEP_SUMMARY"
-              elif grep -q "❯ test/benchmark/${testfile}" "$OUTPUT_FILE" 2>/dev/null; then
-                TESTS=$(grep "❯ test/benchmark/${testfile}" "$OUTPUT_FILE" | grep -oP '\(\d+ tests?.*\)' | head -1)
-                echo "| \`test/benchmark/${testfile}.test.ts\` | ❌ Failed $TESTS |" >> "$GITHUB_STEP_SUMMARY"
-              else
-                echo "| \`test/benchmark/${testfile}.test.ts\` | ⚠️ No output captured |" >> "$GITHUB_STEP_SUMMARY"
-              fi
-            done
+          # Parse pass/fail counts from the vitest JSON reporter output.
+          # Using --reporter=json is more stable than grepping colored unicode
+          # output whose format may change between vitest versions.  (SR-4160 minor fix #10)
+          JSON_REPORT="/tmp/benchmark-report.json"
+          if [ -f "$JSON_REPORT" ]; then
+            echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| File | Result | Passed | Failed |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|--------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+            node -e "
+              const report = JSON.parse(require('fs').readFileSync('$JSON_REPORT', 'utf8'));
+              for (const suite of report.testResults || []) {
+                const file = suite.name.replace(/.*test\/benchmark\//, 'test/benchmark/');
+                const passed = suite.assertionResults.filter(t => t.status === 'passed').length;
+                const failed = suite.assertionResults.filter(t => t.status === 'failed').length;
+                const icon = failed > 0 ? 'FAIL' : 'PASS';
+                console.log('| \`' + file + '\` | ' + icon + ' | ' + passed + ' | ' + failed + ' |');
+              }
+            " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "| (all) | ⚠️ JSON report parse failed | - | - |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| (all) | ⚠️ No output captured |" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ No JSON report found — run may have timed out before vitest finished." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
