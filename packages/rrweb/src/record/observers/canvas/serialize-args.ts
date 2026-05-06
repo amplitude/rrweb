@@ -16,10 +16,7 @@ import type { ImageBitmapDataURLRequestWorker } from '../../workers/image-bitmap
 // ---------------------------------------------------------------------------
 
 let _encodeWorker: ImageBitmapDataURLRequestWorker | null = null;
-const _pendingEncodes = new Map<
-  string,
-  (arg: CanvasArg) => void
->();
+const _pendingEncodes = new Map<string, (arg: CanvasArg) => void>();
 
 function getEncodeWorker(): ImageBitmapDataURLRequestWorker | null {
   if (typeof Worker === 'undefined') return null;
@@ -87,10 +84,7 @@ function serializeCanvas2DFastPath(
   const worker = getEncodeWorker();
   if (!worker) {
     // No worker available — synchronous fallback.
-    const src = canvas.toDataURL(
-      dataURLOptions.type,
-      dataURLOptions.quality,
-    );
+    const src = canvas.toDataURL(dataURLOptions.type, dataURLOptions.quality);
     return { rr_type: 'HTMLImageElement', src };
   }
 
@@ -113,16 +107,18 @@ function serializeCanvas2DFastPath(
 
     return new Promise<CanvasArg>((resolve) => {
       _pendingEncodes.set(encodeId, resolve);
-      (worker as unknown as {
-        postMessage(msg: ImageBitmapEncodeWorkerParams, transfer: Transferable[]): void;
-      }).postMessage(message, [bitmap]);
+      (
+        worker as unknown as {
+          postMessage(
+            msg: ImageBitmapEncodeWorkerParams,
+            transfer: Transferable[],
+          ): void;
+        }
+      ).postMessage(message, [bitmap]);
     });
   } catch {
     // transferToImageBitmap can throw if canvas is 0×0 or cross-origin.
-    const src = canvas.toDataURL(
-      dataURLOptions.type,
-      dataURLOptions.quality,
-    );
+    const src = canvas.toDataURL(dataURLOptions.type, dataURLOptions.quality);
     return { rr_type: 'HTMLImageElement', src };
   }
 }
@@ -177,7 +173,9 @@ export function serializeArg(
   dataURLOptions: DataURLOptions = {},
 ): CanvasArg | Promise<CanvasArg> {
   if (value instanceof Array) {
-    return value.map((arg) => serializeArg(arg, win, ctx, dataURLOptions)) as CanvasArg;
+    return value.map((arg) =>
+      serializeArg(arg, win, ctx, dataURLOptions),
+    ) as CanvasArg;
   } else if (value === null) {
     return value;
   } else if (
@@ -239,10 +237,7 @@ export function serializeArg(
     // Synchronous fallback (old path — preserved for back-compat).
     // TODO: move `toDataURL` to web worker if possible (this path remains
     //       for environments without OffscreenCanvas / transferToImageBitmap)
-    const src = value.toDataURL(
-      dataURLOptions.type,
-      dataURLOptions.quality,
-    );
+    const src = value.toDataURL(dataURLOptions.type, dataURLOptions.quality);
     return { rr_type: 'HTMLImageElement', src };
   } else if (value instanceof ImageData) {
     const name = value.constructor.name;
@@ -250,7 +245,11 @@ export function serializeArg(
     // so serializeArg returns a synchronous CanvasArg here.
     return {
       rr_type: name,
-      args: [serializeArg(value.data, win, ctx, dataURLOptions) as CanvasArg, value.width, value.height],
+      args: [
+        serializeArg(value.data, win, ctx, dataURLOptions) as CanvasArg,
+        value.width,
+        value.height,
+      ],
     };
     // } else if (value instanceof Blob) {
     //   const name = value.constructor.name;
