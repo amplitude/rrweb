@@ -281,8 +281,7 @@ describe('parity: record → replay DOM equality', () => {
       // queued during pause() (e.g. style/attribute patches applied lazily).
       // A single rAF is sufficient; the double-rAF was vestigial and removed.
       await replayPage.evaluate(
-        () =>
-          new Promise<void>((r) => requestAnimationFrame(r)),
+        () => new Promise<void>((r) => requestAnimationFrame(r)),
       );
 
       // Capture the replay DOM snapshot from inside the replay iframe.
@@ -372,7 +371,8 @@ describe('parity: record → replay DOM equality', () => {
         for (const [k, v] of Object.entries(src.attributes)) {
           if (rep.attributes[k] !== v) return false;
         }
-        if (src.textContent && rep.textContent !== src.textContent) return false;
+        if (src.textContent && rep.textContent !== src.textContent)
+          return false;
         return true;
       }
 
@@ -392,7 +392,9 @@ describe('parity: record → replay DOM equality', () => {
         }
         if (!found) {
           matchFailures.push(
-            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${srcNode.textContent}"`,
+            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${
+              srcNode.textContent
+            }"`,
           );
         }
       }

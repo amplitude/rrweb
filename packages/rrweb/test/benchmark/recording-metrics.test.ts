@@ -230,7 +230,9 @@ describe('benchmark: recording metrics', () => {
 
           const workloadDurationMs = performance.now() - startTime;
 
-          const sorted = emitCallbackOverheadSamples.slice().sort((a, b) => a - b);
+          const sorted = emitCallbackOverheadSamples
+            .slice()
+            .sort((a, b) => a - b);
 
           function pct(arr: number[], p: number): number {
             if (arr.length === 0) return 0;
