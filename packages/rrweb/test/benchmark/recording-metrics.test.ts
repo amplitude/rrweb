@@ -55,11 +55,11 @@ const FIXTURES: FixtureSuite[] = [
     workload: 'window.runWorkload(10)',
     runs: 3,
     // rrweb batches mutations per animation-frame tick, not per DOM node.
-    // Each cycle has 3 ticks (after mount, after reconcile, after unmount),
-    // so 10 cycles produce ~30 IncrementalSnapshot mutation events total.
-    // The floor is set conservatively below that to catch a total recording
-    // failure (0 mutations) while tolerating batching differences.
-    expectedMinMutations: 10,
+    // 3 ticks × 10 cycles = ~30 IncrementalSnapshot mutation events expected.
+    // Floor at 20 catches a >33% drop while tolerating per-run batching
+    // variance; the expect(totalEvents > 0) above already handles the
+    // "no mutations at all" failure mode.
+    expectedMinMutations: 20,
   },
   {
     name: 'scroll-heavy',

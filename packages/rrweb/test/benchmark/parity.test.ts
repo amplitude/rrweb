@@ -357,9 +357,11 @@ describe('parity: record → replay DOM equality', () => {
       //     "1 <li> in replay matches 1 000 source <li>s" false-positive.
       //   - Order is enforced: the replay cursor only moves forward.
       //
-      // The replayer may inject at most 1 extra node (mouse-cursor div) so we
-      // tolerate exactly 1 unmatched source node before failing.  This is
-      // stricter than a fractional threshold while still being noise-tolerant.
+      // MAX_ALLOWED_MISMATCHES = 1 tolerates exactly one source node that has no
+      // replay counterpart. This is a deliberate small blind spot for noise (e.g.
+      // async style/font work that hasn't settled by the time we snapshot); it is
+      // NOT a tolerance for replayer-injected wrapper nodes — those live outside
+      // iframeDoc.body and are filtered by walking only the iframe's body subtree.
       // (SR-4160 critical fixes #2, #3; major fix #4)
       //
       // TODO(SR-4160 follow-up): extend to detect sibling-reorder regressions
@@ -399,9 +401,9 @@ describe('parity: record → replay DOM equality', () => {
         }
       }
 
-      // Allow at most 1 unmatched node (replayer may inject 1 mouse-cursor
-      // div that has no source counterpart; asserting <= 1 is more meaningful
-      // than a fractional rate on a 2-node snapshot).
+      // Allow at most 1 unmatched source node (noise tolerance for async work
+      // that may not have settled by snapshot time; replayer wrapper nodes live
+      // outside iframeDoc.body and are not in scope here).
       const MAX_ALLOWED_MISMATCHES = 1;
 
       if (matchFailures.length > MAX_ALLOWED_MISMATCHES) {
