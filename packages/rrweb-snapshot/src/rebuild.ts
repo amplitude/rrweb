@@ -524,7 +524,7 @@ export function buildNodeWithSN(
     const useFragment =
       n.type === NodeType.Element &&
       typeof doc.createDocumentFragment === 'function';
-    let fragment: DocumentFragment | null = useFragment
+    const fragment: DocumentFragment | null = useFragment
       ? doc.createDocumentFragment()
       : null;
     let pendingCallbacks: Array<{ node: Node; id: number }> = [];
