@@ -48,8 +48,8 @@ Results land in `test/benchmark/results/<fixture-name>.json`.
 | `workloadDurationMs` | Wall-clock time for the entire fixture workload                                           |
 | `msPerK`             | `workloadDurationMs / (mutationEvents / 1000)` — main-thread cost per 1 k mutation events |
 | `peakHeapBytes`      | Peak `performance.memory.usedJSHeapSize` (Chrome only; 0 elsewhere)                       |
-| `emitLatency.p50Ms`  | Median time inside the `emit` callback (measures serialization cost)                      |
-| `emitLatency.p99Ms`  | 99th-percentile emit time (highlights worst-case spikes)                                  |
+| `emitCallbackOverhead.p50Ms` | Median time spent inside the harness `emit` callback (measures callback overhead, not rrweb-internal serialization cost) |
+| `emitCallbackOverhead.p99Ms` | 99th-percentile harness callback overhead (highlights worst-case spikes)                 |
 
 ---
 
@@ -65,7 +65,7 @@ Proposed approach:
 
 2. **PR comparison job** — on every PR, downloads the latest master baseline
    artifact, runs the same benchmark against the PR branch, and diffs the
-   `msPerK` and `emitLatency.p99Ms` fields.
+   `msPerK` and `emitCallbackOverhead.p99Ms` fields.
 
 3. **Gate rule** — fail (or post a warning comment) if any metric regresses by
    more than 10% compared to the baseline.
@@ -103,8 +103,10 @@ it would be added in the CI wiring PR.
 - `recording-metrics.test.ts` does **not** do CPU throttling (unlike `dom-mutation.test.ts`).
   Add a `Emulation.setCPUThrottlingRate` call before the workload for a more
   realistic mobile baseline.
-- The parity comparison uses a lenient "source ⊆ replay" match with a 1%
-  tolerance. A stricter tree-walk diff (order-sensitive) is deferred.
+- The parity comparison is order-sensitive: source and replay snapshots are
+  walked in parallel via a forward-only cursor, with at most 1 unmatched source
+  node tolerated. Sibling-reorder regressions within a common parent are not yet
+  detected (TODO in `parity.test.ts`).
 - happy-dom is available as a devDep but is not used in the current parity
   harness — the Replayer requires a real browser DOM (iframe sandbox).
   A future iteration could use happy-dom for a lightweight unit-level snapshot
