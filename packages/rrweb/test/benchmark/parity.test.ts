@@ -26,7 +26,13 @@ import type { eventWithTime } from '@amplitude/rrweb-types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { vi } from 'vitest';
-import { getServerURL, ISuite, launchPuppeteer, startServer } from '../utils';
+import { ISuite, launchPuppeteer, startServer } from '../utils';
+
+// Load the rrweb UMD bundle once at module scope (avoids the dist/main path bug).
+const rrwebCode = fs.readFileSync(
+  path.resolve(__dirname, '../../dist/rrweb.umd.cjs'),
+  'utf8',
+);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -104,17 +110,10 @@ describe('parity: record → replay DOM equality', () => {
     server.close();
   });
 
-  const getRrwebUrl = () => `${getServerURL(server)}/rrweb.umd.cjs`;
-
   for (const fixture of FIXTURES) {
     it(`DOM parity: ${fixture.name}`, async () => {
       const fixturePath = path.resolve(__dirname, 'fixtures', fixture.file);
       const fixtureHtml = fs.readFileSync(fixturePath, 'utf8');
-      const rrwebUrl = getRrwebUrl();
-      const rrwebCode = fs.readFileSync(
-        path.resolve(__dirname, '../../dist/rrweb.umd.cjs'),
-        'utf8',
-      );
 
       // ------------------------------------------------------------------
       // Phase 1 – Record
@@ -133,15 +132,8 @@ describe('parity: record → replay DOM equality', () => {
         waitUntil: 'domcontentloaded',
       });
 
-      // Inject rrweb from the local test server.
-      await recordPage.evaluate((url: string) => {
-        const script = document.createElement('script');
-        script.src = url;
-        document.head.appendChild(script);
-      }, rrwebUrl);
-      await recordPage.waitForFunction('typeof window.rrweb !== "undefined"', {
-        timeout: 15_000,
-      });
+      // Inject rrweb via evaluate (avoids the dist/main path bug).
+      await recordPage.evaluate(rrwebCode);
 
       // Start recording, run workload, collect events.
       const eventsJson: string = (await recordPage.evaluate(

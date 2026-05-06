@@ -19,7 +19,13 @@ import type { eventWithTime } from '@amplitude/rrweb-types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { vi } from 'vitest';
-import { getServerURL, ISuite, launchPuppeteer, startServer } from '../utils';
+import { ISuite, launchPuppeteer, startServer } from '../utils';
+
+// Load the rrweb UMD bundle once at module scope (avoids the dist/main path bug).
+const rrwebSource = fs.readFileSync(
+  path.resolve(__dirname, '../../dist/rrweb.umd.cjs'),
+  'utf8',
+);
 
 // ---------------------------------------------------------------------------
 // Fixture definitions
@@ -123,9 +129,6 @@ describe('benchmark: recording metrics', () => {
     server.close();
   });
 
-  // Load the rrweb UMD bundle once; shared across fixture pages.
-  const getRrwebUrl = () => `${getServerURL(server)}/rrweb.umd.cjs`;
-
   for (const fixture of FIXTURES) {
     it(`records and measures: ${fixture.name}`, async () => {
       const fixturePath = path.resolve(__dirname, 'fixtures', fixture.file);
@@ -145,16 +148,8 @@ describe('benchmark: recording metrics', () => {
         await page.goto('about:blank');
         await page.setContent(fixtureHtml, { waitUntil: 'domcontentloaded' });
 
-        // Inject the rrweb bundle.
-        const rrwebUrl = getRrwebUrl();
-        await page.evaluate((url: string) => {
-          const script = document.createElement('script');
-          script.src = url;
-          document.head.appendChild(script);
-        }, rrwebUrl);
-        await page.waitForFunction('typeof window.rrweb !== "undefined"', {
-          timeout: 15_000,
-        });
+        // Inject the rrweb bundle via evaluate (avoids the dist/main path bug).
+        await page.evaluate(rrwebSource);
 
         // Run the recording + workload inside the browser context.
         const metrics = (await page.evaluate(async (workloadExpr: string) => {
