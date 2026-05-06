@@ -91,7 +91,11 @@ describe('parity: record → replay DOM equality', () => {
     server = await startServer();
     browser = await launchPuppeteer({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+      ],
     });
   });
 
@@ -104,11 +108,7 @@ describe('parity: record → replay DOM equality', () => {
 
   for (const fixture of FIXTURES) {
     it(`DOM parity: ${fixture.name}`, async () => {
-      const fixturePath = path.resolve(
-        __dirname,
-        'fixtures',
-        fixture.file,
-      );
+      const fixturePath = path.resolve(__dirname, 'fixtures', fixture.file);
       const fixtureHtml = fs.readFileSync(fixturePath, 'utf8');
       const rrwebUrl = getRrwebUrl();
       const rrwebCode = fs.readFileSync(
@@ -122,12 +122,16 @@ describe('parity: record → replay DOM equality', () => {
       const recordPage = await browser.newPage();
       recordPage.on('console', (msg) =>
         process.stdout.write(
-          `[${fixture.name}:record] ${msg.type().toUpperCase()} ${msg.text()}\n`,
+          `[${fixture.name}:record] ${msg
+            .type()
+            .toUpperCase()} ${msg.text()}\n`,
         ),
       );
 
       await recordPage.goto('about:blank');
-      await recordPage.setContent(fixtureHtml, { waitUntil: 'domcontentloaded' });
+      await recordPage.setContent(fixtureHtml, {
+        waitUntil: 'domcontentloaded',
+      });
 
       // Inject rrweb from the local test server.
       await recordPage.evaluate((url: string) => {
@@ -220,7 +224,9 @@ describe('parity: record → replay DOM equality', () => {
       const replayPage = await browser.newPage();
       replayPage.on('console', (msg) =>
         process.stdout.write(
-          `[${fixture.name}:replay] ${msg.type().toUpperCase()} ${msg.text()}\n`,
+          `[${fixture.name}:replay] ${msg
+            .type()
+            .toUpperCase()} ${msg.text()}\n`,
         ),
       );
 
@@ -252,7 +258,10 @@ describe('parity: record → replay DOM equality', () => {
 
       // Give the replayer a tick to settle.
       await replayPage.evaluate(
-        () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+        () =>
+          new Promise<void>((r) =>
+            requestAnimationFrame(() => requestAnimationFrame(r)),
+          ),
       );
 
       // Capture the replay DOM snapshot from inside the replay iframe.
@@ -345,20 +354,25 @@ describe('parity: record → replay DOM equality', () => {
         });
         if (!matched) {
           matchFailures.push(
-            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${srcNode.textContent}"`,
+            `<${srcNode.tagName} ${JSON.stringify(srcNode.attributes)}> "${
+              srcNode.textContent
+            }"`,
           );
         }
       }
 
       // Allow up to 1% mismatch (covers minor rrweb edge cases, timing jitter).
-      const mismatchRate = matchFailures.length / Math.max(sourceSnapshot.length, 1);
+      const mismatchRate =
+        matchFailures.length / Math.max(sourceSnapshot.length, 1);
       const MISMATCH_THRESHOLD = 0.01;
 
       if (mismatchRate > MISMATCH_THRESHOLD) {
         const preview = matchFailures.slice(0, 10).join('\n  ');
         throw new Error(
           `[${fixture.name}] ${matchFailures.length}/${sourceSnapshot.length} ` +
-            `nodes (${(mismatchRate * 100).toFixed(1)}%) did not match in replay.\n` +
+            `nodes (${(mismatchRate * 100).toFixed(
+              1,
+            )}%) did not match in replay.\n` +
             `First failures:\n  ${preview}`,
         );
       }
@@ -366,7 +380,9 @@ describe('parity: record → replay DOM equality', () => {
       console.log(
         `[${fixture.name}] parity OK: ${sourceSnapshot.length} source nodes, ` +
           `${replaySnapshot.length} replay nodes, ` +
-          `${matchFailures.length} unmatched (${(mismatchRate * 100).toFixed(2)}%)`,
+          `${matchFailures.length} unmatched (${(mismatchRate * 100).toFixed(
+            2,
+          )}%)`,
       );
     });
   }

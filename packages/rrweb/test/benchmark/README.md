@@ -9,15 +9,15 @@
 
 ## What's in here
 
-| File | Purpose |
-|------|---------|
+| File                           | Purpose                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------- |
 | `fixtures/mutation-heavy.html` | React-style reconciliation loop (1 000 nodes, create → reconcile → remove) |
-| `fixtures/scroll-heavy.html` | Long page (100 000 px), throttled scroll passes |
-| `recording-metrics.test.ts` | Per-fixture: workload duration, ms/1k mutations, peak heap, emit p50/p99 |
-| `parity.test.ts` | Record → replay DOM equality assertion |
-| `results/` | JSON result files written by `recording-metrics.test.ts` |
-| `dom-mutation.test.ts` | Pre-existing CPU/tracing benchmark (unchanged) |
-| `replay-fast-forward.test.ts` | Pre-existing fast-forward benchmark (unchanged) |
+| `fixtures/scroll-heavy.html`   | Long page (100 000 px), throttled scroll passes                            |
+| `recording-metrics.test.ts`    | Per-fixture: workload duration, ms/1k mutations, peak heap, emit p50/p99   |
+| `parity.test.ts`               | Record → replay DOM equality assertion                                     |
+| `results/`                     | JSON result files written by `recording-metrics.test.ts`                   |
+| `dom-mutation.test.ts`         | Pre-existing CPU/tracing benchmark (unchanged)                             |
+| `replay-fast-forward.test.ts`  | Pre-existing fast-forward benchmark (unchanged)                            |
 
 ---
 
@@ -43,13 +43,13 @@ Results land in `test/benchmark/results/<fixture-name>.json`.
 
 ## Metrics captured (`recording-metrics.test.ts`)
 
-| Metric | Description |
-|--------|-------------|
-| `workloadDurationMs` | Wall-clock time for the entire fixture workload |
-| `msPerK` | `workloadDurationMs / (mutationEvents / 1000)` — main-thread cost per 1 k mutation events |
-| `peakHeapBytes` | Peak `performance.memory.usedJSHeapSize` (Chrome only; 0 elsewhere) |
-| `emitLatency.p50Ms` | Median time inside the `emit` callback (measures serialization cost) |
-| `emitLatency.p99Ms` | 99th-percentile emit time (highlights worst-case spikes) |
+| Metric               | Description                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `workloadDurationMs` | Wall-clock time for the entire fixture workload                                           |
+| `msPerK`             | `workloadDurationMs / (mutationEvents / 1000)` — main-thread cost per 1 k mutation events |
+| `peakHeapBytes`      | Peak `performance.memory.usedJSHeapSize` (Chrome only; 0 elsewhere)                       |
+| `emitLatency.p50Ms`  | Median time inside the `emit` callback (measures serialization cost)                      |
+| `emitLatency.p99Ms`  | 99th-percentile emit time (highlights worst-case spikes)                                  |
 
 ---
 
@@ -87,7 +87,7 @@ Example GitHub Actions step (sketch — not authoritative):
     cd packages/rrweb
     yarn build
     yarn benchmark
-  
+
 - name: Compare results
   run: node scripts/compare-benchmarks.js baseline-results/ test/benchmark/results/
 ```
@@ -104,7 +104,7 @@ it would be added in the CI wiring PR.
   Add a `Emulation.setCPUThrottlingRate` call before the workload for a more
   realistic mobile baseline.
 - The parity comparison uses a lenient "source ⊆ replay" match with a 1%
-  tolerance.  A stricter tree-walk diff (order-sensitive) is deferred.
+  tolerance. A stricter tree-walk diff (order-sensitive) is deferred.
 - happy-dom is available as a devDep but is not used in the current parity
   harness — the Replayer requires a real browser DOM (iframe sandbox).
   A future iteration could use happy-dom for a lightweight unit-level snapshot

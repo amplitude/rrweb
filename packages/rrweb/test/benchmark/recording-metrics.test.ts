@@ -104,7 +104,11 @@ describe('benchmark: recording metrics', () => {
     server = await startServer();
     browser = await launchPuppeteer({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+      ],
     });
   });
 
@@ -132,7 +136,9 @@ describe('benchmark: recording metrics', () => {
       for (let run = 0; run < fixture.runs; run++) {
         page = await browser.newPage();
         page.on('console', (msg) =>
-          process.stdout.write(`[${fixture.name}] ${msg.type().toUpperCase()} ${msg.text()}\n`),
+          process.stdout.write(
+            `[${fixture.name}] ${msg.type().toUpperCase()} ${msg.text()}\n`,
+          ),
         );
 
         // Load fixture HTML.
@@ -151,73 +157,67 @@ describe('benchmark: recording metrics', () => {
         });
 
         // Run the recording + workload inside the browser context.
-        const metrics = (await page.evaluate(
-          async (workloadExpr: string) => {
-            const emitLatencies: number[] = [];
-            const events: eventWithTime[] = [];
-            let mutationCount = 0;
-            let peakHeap = 0;
+        const metrics = (await page.evaluate(async (workloadExpr: string) => {
+          const emitLatencies: number[] = [];
+          const events: eventWithTime[] = [];
+          let mutationCount = 0;
+          let peakHeap = 0;
 
-            // Wrap the rrweb emit to measure latency.
-            const startTime = performance.now();
+          // Wrap the rrweb emit to measure latency.
+          const startTime = performance.now();
 
-            await new Promise<void>((resolve, reject) => {
-              const record = (window as any).rrweb.record;
+          await new Promise<void>((resolve, reject) => {
+            const record = (window as any).rrweb.record;
 
-              record({
-                emit(event: eventWithTime) {
-                  const before = performance.now();
-                  events.push(event);
-                  // EventType.IncrementalSnapshot = 3
-                  // IncrementalSource.Mutation = 0
-                  if (
-                    event.type === 3 &&
-                    (event as any).data?.source === 0
-                  ) {
-                    mutationCount++;
-                  }
-                  const after = performance.now();
-                  emitLatencies.push(after - before);
+            record({
+              emit(event: eventWithTime) {
+                const before = performance.now();
+                events.push(event);
+                // EventType.IncrementalSnapshot = 3
+                // IncrementalSource.Mutation = 0
+                if (event.type === 3 && (event as any).data?.source === 0) {
+                  mutationCount++;
+                }
+                const after = performance.now();
+                emitLatencies.push(after - before);
 
-                  // Sample heap if available (Chrome-only).
-                  if ((performance as any).memory) {
-                    const heap = (performance as any).memory.usedJSHeapSize;
-                    if (heap > peakHeap) peakHeap = heap;
-                  }
-                },
-              });
-
-              // Evaluate the workload expression as a Promise.
-              const workloadFn = new Function(
-                `return (async () => { return await ${workloadExpr}; })`,
-              )();
-              workloadFn()
-                .then(() => resolve())
-                .catch(reject);
+                // Sample heap if available (Chrome-only).
+                if ((performance as any).memory) {
+                  const heap = (performance as any).memory.usedJSHeapSize;
+                  if (heap > peakHeap) peakHeap = heap;
+                }
+              },
             });
 
-            const workloadDurationMs = performance.now() - startTime;
+            // Evaluate the workload expression as a Promise.
+            const workloadFn = new Function(
+              `return (async () => { return await ${workloadExpr}; })`,
+            )();
+            workloadFn()
+              .then(() => resolve())
+              .catch(reject);
+          });
 
-            const sorted = emitLatencies.slice().sort((a, b) => a - b);
+          const workloadDurationMs = performance.now() - startTime;
 
-            function pct(arr: number[], p: number): number {
-              if (arr.length === 0) return 0;
-              const idx = Math.ceil((p / 100) * arr.length) - 1;
-              return arr[Math.max(0, Math.min(idx, arr.length - 1))];
-            }
+          const sorted = emitLatencies.slice().sort((a, b) => a - b);
 
-            return {
-              totalEvents: events.length,
-              mutationEvents: mutationCount,
-              workloadDurationMs,
-              peakHeapBytes: peakHeap,
-              emitLatencyP50: pct(sorted, 50),
-              emitLatencyP99: pct(sorted, 99),
-              emitSamples: emitLatencies.length,
-            };
-          },
-          fixture.workload,
-        )) as {
+          function pct(arr: number[], p: number): number {
+            if (arr.length === 0) return 0;
+            const idx = Math.ceil((p / 100) * arr.length) - 1;
+            return arr[Math.max(0, Math.min(idx, arr.length - 1))];
+          }
+
+          return {
+            totalEvents: events.length,
+            mutationEvents: mutationCount,
+            workloadDurationMs,
+            peakHeapBytes: peakHeap,
+            emitLatencyP50: pct(sorted, 50),
+            emitLatencyP99: pct(sorted, 99),
+            emitSamples: emitLatencies.length,
+          };
+        }, fixture.workload)) as {
           totalEvents: number;
           mutationEvents: number;
           workloadDurationMs: number;
@@ -237,7 +237,8 @@ describe('benchmark: recording metrics', () => {
           runs: run + 1,
           totalEvents: metrics.totalEvents,
           mutationEvents: metrics.mutationEvents,
-          workloadDurationMs: Math.round(metrics.workloadDurationMs * 100) / 100,
+          workloadDurationMs:
+            Math.round(metrics.workloadDurationMs * 100) / 100,
           msPerK: Math.round(msPerK * 100) / 100,
           peakHeapBytes: metrics.peakHeapBytes,
           emitLatency: {
