@@ -1,0 +1,138 @@
+name: Benchmark Harness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    name: Parity + Perf Harness
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js lts/*
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610 # v3
+        with:
+          node-version: lts/*
+
+      - name: Install Dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          PUPPETEER_DOWNLOAD_BASE_URL: 'https://storage.googleapis.com/chrome-for-testing-public'
+
+      - name: Build and run benchmark harness
+        id: benchmark
+        continue-on-error: true
+        run: |
+          cd packages/rrweb
+          yarn build
+          # xvfb-run removed: headless Chrome does not need a virtual display.
+          # exit_code capture removed: use steps.benchmark.outcome instead.
+          # --reporter=json writes a structured report that the summary step
+          # parses with node, avoiding fragile grep on colored unicode output.
+          PUPPETEER_HEADLESS=true \
+            yarn vitest run --maxConcurrency 1 --no-file-parallelism \
+              test/benchmark/recording-metrics.test.ts \
+              test/benchmark/parity.test.ts \
+            --reporter=verbose --reporter=json --outputFile=/tmp/benchmark-report.json \
+            2>&1 | tee /tmp/benchmark-output.txt
+
+      - name: Write job summary
+        if: always()
+        run: |
+          set +e
+
+          RESULTS_DIR="packages/rrweb/test/benchmark/results"
+          OUTPUT_FILE="/tmp/benchmark-output.txt"
+          OUTCOME="${{ steps.benchmark.outcome }}"
+
+          echo "## Benchmark Harness Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Status:** $( [ "$OUTCOME" = "success" ] && echo "✅ All passed" || echo "⚠️ Some tests failed (non-blocking)" )" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Parse pass/fail counts from the vitest JSON reporter output.
+          # Using --reporter=json is more stable than grepping colored unicode
+          # output whose format may change between vitest versions.  (SR-4160 minor fix #10)
+          JSON_REPORT="/tmp/benchmark-report.json"
+          if [ -f "$JSON_REPORT" ]; then
+            echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| File | Result | Passed | Failed |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|--------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+            node -e "
+              const report = JSON.parse(require('fs').readFileSync('$JSON_REPORT', 'utf8'));
+              for (const suite of report.testResults || []) {
+                const file = suite.name.replace(/.*test\/benchmark\//, 'test/benchmark/');
+                const passed = suite.assertionResults.filter(t => t.status === 'passed').length;
+                const failed = suite.assertionResults.filter(t => t.status === 'failed').length;
+                const icon = failed > 0 ? 'FAIL' : 'PASS';
+                console.log('| \`' + file + '\` | ' + icon + ' | ' + passed + ' | ' + failed + ' |');
+              }
+            " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "| (all) | ⚠️ JSON report parse failed | - | - |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ No JSON report found — run may have timed out before vitest finished." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Emit perf metrics from JSON results if available
+          if [ -d "$RESULTS_DIR" ] && ls "$RESULTS_DIR"/*.json 1>/dev/null 2>&1; then
+            echo "### Performance Metrics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Fixture | Run | Total Events | Mutation Events | Workload ms | ms/1k mutations | Peak Heap MB | Cb overhead p50 ms | Cb overhead p99 ms |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---------|-----|-------------|----------------|-------------|----------------|-------------|-------------------|-------------------|" >> "$GITHUB_STEP_SUMMARY"
+
+            for json_file in "$RESULTS_DIR"/*.json; do
+              fixture=$(basename "$json_file" .json)
+              # Use node to parse JSON and emit table rows
+              node -e "
+                const data = JSON.parse(require('fs').readFileSync('$json_file', 'utf8'));
+                for (const r of data) {
+                  const heapMB = r.peakHeapBytes ? (r.peakHeapBytes / 1048576).toFixed(1) : 'n/a';
+                  console.log('| ' + [
+                    r.fixture,
+                    r.runs,
+                    r.totalEvents,
+                    r.mutationEvents,
+                    r.workloadDurationMs,
+                    r.msPerK,
+                    heapMB,
+                    r.emitCallbackOverhead.p50Ms,
+                    r.emitCallbackOverhead.p99Ms,
+                  ].join(' | ') + ' |');
+                }
+              " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            done
+
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "_Results written to \`packages/rrweb/test/benchmark/results/\`_" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Append a snippet of the raw output for debugging
+          if [ -f "$OUTPUT_FILE" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "<details><summary>Raw vitest output</summary>" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -60 "$OUTPUT_FILE" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+          fi
