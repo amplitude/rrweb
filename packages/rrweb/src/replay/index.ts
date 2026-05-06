@@ -94,6 +94,10 @@ import canvasMutation from './canvas';
 import { deserializeArg } from './canvas/deserialize-args';
 import { MediaManager } from './media';
 import { applyDialogToTopLevel, removeDialogFromTopLevel } from './dialog';
+import { applyViewportResize } from './handlers/viewport';
+import { applySelectionHandler } from './handlers/selection';
+import { applyScrollHandler } from './handlers/scroll';
+import type { ApplyContext } from './handlers/types';
 
 // https://github.com/rollup/rollup/issues/1267#issuecomment-296395734
 const mitt = mittProxy.default || mittProxy;
@@ -1404,6 +1408,25 @@ export class Replayer {
     isSync: boolean,
   ) {
     const { data: d } = e;
+
+    // Shared context object threaded to extracted per-source handlers.
+    // Only build this once per applyIncremental call; add fields here as more
+    // handlers are extracted.  Keep it minimal — only include what at least
+    // one extracted handler actually needs.
+    const applyCtx: ApplyContext = {
+      mirror: this.mirror,
+      iframe: this.iframe,
+      emitter: this.emitter,
+      usingVirtualDom: this.usingVirtualDom,
+      virtualDom: this.virtualDom,
+      applyScroll: this.applyScroll.bind(this),
+      applySelection: this.applySelection.bind(this),
+      debugNodeNotFound: this.debugNodeNotFound.bind(this),
+      setLastSelectionData: (data) => {
+        this.lastSelectionData = data;
+      },
+    };
+
     switch (d.source) {
       case IncrementalSource.Mutation: {
         try {
@@ -1542,29 +1565,11 @@ export class Replayer {
         break;
       }
       case IncrementalSource.Scroll: {
-        /**
-         * Same as the situation of missing input target.
-         */
-        if (d.id === -1) {
-          break;
-        }
-        if (this.usingVirtualDom) {
-          const target = this.virtualDom.mirror.getNode(d.id) as RRElement;
-          if (!target) {
-            return this.debugNodeNotFound(d, d.id);
-          }
-          target.scrollData = d;
-          break;
-        }
-        // Use isSync rather than this.usingVirtualDom because not every fast-forward process uses virtual dom optimization.
-        this.applyScroll(d, isSync);
+        applyScrollHandler(applyCtx, d, isSync);
         break;
       }
       case IncrementalSource.ViewportResize:
-        this.emitter.emit(ReplayerEvents.Resize, {
-          width: d.width,
-          height: d.height,
-        });
+        applyViewportResize(applyCtx, d, isSync);
         break;
       case IncrementalSource.Input: {
         /**
@@ -1663,11 +1668,7 @@ export class Replayer {
         break;
       }
       case IncrementalSource.Selection: {
-        if (isSync) {
-          this.lastSelectionData = d;
-          break;
-        }
-        this.applySelection(d);
+        applySelectionHandler(applyCtx, d, isSync);
         break;
       }
       case IncrementalSource.AdoptedStyleSheet: {
