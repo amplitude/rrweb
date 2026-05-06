@@ -96,8 +96,8 @@ jobs:
           if [ -d "$RESULTS_DIR" ] && ls "$RESULTS_DIR"/*.json 1>/dev/null 2>&1; then
             echo "### Performance Metrics" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Fixture | Run | Total Events | Mutation Events | Workload ms | ms/1k mutations | Peak Heap MB | Emit p50 ms | Emit p99 ms |" >> "$GITHUB_STEP_SUMMARY"
-            echo "|---------|-----|-------------|----------------|-------------|----------------|-------------|------------|------------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Fixture | Run | Total Events | Mutation Events | Workload ms | ms/1k mutations | Peak Heap MB | Cb overhead p50 ms | Cb overhead p99 ms |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---------|-----|-------------|----------------|-------------|----------------|-------------|-------------------|-------------------|" >> "$GITHUB_STEP_SUMMARY"
 
             for json_file in "$RESULTS_DIR"/*.json; do
               fixture=$(basename "$json_file" .json)
@@ -114,8 +114,8 @@ jobs:
                     r.workloadDurationMs,
                     r.msPerK,
                     heapMB,
-                    r.emitLatency.p50Ms,
-                    r.emitLatency.p99Ms,
+                    r.emitCallbackOverhead.p50Ms,
+                    r.emitCallbackOverhead.p99Ms,
                   ].join(' | ') + ' |');
                 }
               " >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
