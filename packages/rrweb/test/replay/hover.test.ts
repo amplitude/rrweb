@@ -68,7 +68,8 @@ describe('replayer', function () {
 
       const image = await page.screenshot();
       expect(image).toMatchImageSnapshot({
-        failureThreshold: 40,
+        failureThreshold: 0.02,
+        failureThresholdType: 'percent',
       });
     });
   });

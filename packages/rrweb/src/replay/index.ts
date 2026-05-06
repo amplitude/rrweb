@@ -2352,6 +2352,52 @@ export class Replayer {
     }
   }
 
+  /**
+   * Clone `sheet` into `targetWindow` if it was constructed in a different
+   * window (browsers disallow cross-document adoption of CSSStyleSheet
+   * instances).  Returns the original sheet unchanged when no clone is needed
+   * or when cloning fails.
+   *
+   * IMPORTANT: This method intentionally does NOT update `styleMirror`.
+   * Callers must update the mirror only after the adoptedStyleSheets
+   * assignment succeeds, so a failed assignment leaves the mirror intact.
+   */
+  private cloneSheetIntoWindow(
+    sheet: CSSStyleSheet,
+    targetWindow: IWindow,
+  ): CSSStyleSheet {
+    // Same-window sheet — no cloning needed.
+    if (sheet.constructor === targetWindow.CSSStyleSheet) {
+      return sheet;
+    }
+    try {
+      const clone = new targetWindow.CSSStyleSheet();
+      // @import rules are silently dropped by replaceSync/insertRule per
+      // spec (they must precede other rules and cannot be re-fetched
+      // without network access), so filter them out before copying.
+      const nonImportRules = Array.from(sheet.cssRules).filter((r) =>
+        typeof CSSImportRule !== 'undefined'
+          ? !(r instanceof CSSImportRule)
+          : !r.cssText.trimStart().startsWith('@import'),
+      );
+      const rulesText = nonImportRules.map((r) => r.cssText).join('\n');
+      if (typeof clone.replaceSync === 'function') {
+        clone.replaceSync(rulesText);
+      } else {
+        // Fallback for environments that don't support replaceSync
+        // (e.g. older jsdom). insertRule handles rules one-by-one.
+        for (const rule of nonImportRules) {
+          clone.insertRule(rule.cssText, clone.cssRules.length);
+        }
+      }
+      return clone;
+    } catch {
+      // If cloning fails (e.g. cssRules is cross-origin inaccessible),
+      // return the original sheet as a best-effort fallback.
+      return sheet;
+    }
+  }
+
   private applySnapshotAdoptedStyleSheets(
     node: Node,
     adoptedStyleSheets: serializedAdoptedStyleSheet[],
@@ -2363,7 +2409,12 @@ export class Replayer {
       hostWindow = (node as Document).defaultView;
     if (!hostWindow) return;
 
+    // Collect (styleId, clone) pairs so we can update the mirror only after
+    // the adoptedStyleSheets assignment succeeds (issue: mirror must not be
+    // updated if the outer assignment throws).
     const sheets: CSSStyleSheet[] = [];
+    const mirrorUpdates: Array<{ styleId: number; clone: CSSStyleSheet }> = [];
+
     for (const { styleId, rules } of adoptedStyleSheets) {
       const existing = this.styleMirror.getStyle(styleId);
       if (existing) {
@@ -2380,7 +2431,14 @@ export class Replayer {
             existing,
           );
         }
-        sheets.push(existing);
+        // Guard against cross-document sharing: if the already-registered
+        // sheet belongs to a different window, clone it before adopting.
+        const sheetToAdopt = this.cloneSheetIntoWindow(existing, hostWindow);
+        if (sheetToAdopt !== existing) {
+          // Record the (styleId → clone) mapping; apply after assignment.
+          mirrorUpdates.push({ styleId, clone: sheetToAdopt });
+        }
+        sheets.push(sheetToAdopt);
         continue;
       }
       try {
@@ -2398,9 +2456,20 @@ export class Replayer {
       }
     }
 
-    if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
-    else if (node.nodeName === '#document')
-      (node as Document).adoptedStyleSheets = sheets;
+    try {
+      if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
+      else if (node.nodeName === '#document')
+        (node as Document).adoptedStyleSheets = sheets;
+      // Assignment succeeded — now it is safe to update the mirror so that
+      // future style-rule mutations target the clones rather than the
+      // foreign sheets.
+      for (const { styleId, clone } of mirrorUpdates) {
+        this.styleMirror.replace(styleId, clone);
+      }
+    } catch (e) {
+      this.warn('adoptedStyleSheets assignment failed', e);
+      // Mirror is intentionally NOT updated: the sheets were never adopted.
+    }
   }
 
   private applyAdoptedStyleSheet(data: adoptedStyleSheetData) {
@@ -2439,20 +2508,57 @@ export class Replayer {
     const MAX_RETRY_TIME = 10;
     let count = 0;
     const adoptStyleSheets = (targetHost: Node, styleIds: number[]) => {
+      const targetDoc =
+        targetHost.nodeName === '#document'
+          ? (targetHost as Document)
+          : (targetHost as HTMLElement).ownerDocument;
+      if (!targetDoc) return;
+      const targetWindow = targetDoc.defaultView;
+      if (!targetWindow) return;
+
+      // Browsers disallow sharing a CSSStyleSheet instance across documents.
+      // Clone any sheet that was constructed in a different window before adopting (SR-2960).
+      // Collect (styleId, clone) pairs; update the mirror only after the
+      // assignment succeeds so a failed assignment leaves the mirror intact.
+      const mirrorUpdates: Array<{ styleId: number; clone: CSSStyleSheet }> =
+        [];
       const stylesToAdopt = styleIds
-        .map((styleId) => this.styleMirror.getStyle(styleId))
-        .filter((style) => style !== null) as CSSStyleSheet[];
-      if (hasShadowRoot(targetHost))
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
-          stylesToAdopt;
-      else if (targetHost.nodeName === '#document')
-        (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+        .map((styleId) => {
+          const sheet = this.styleMirror.getStyle(styleId);
+          if (!sheet) return null;
+          const sheetToAdopt = this.cloneSheetIntoWindow(sheet, targetWindow);
+          if (sheetToAdopt !== sheet) {
+            mirrorUpdates.push({ styleId, clone: sheetToAdopt });
+          }
+          return sheetToAdopt;
+        })
+        .filter((style): style is CSSStyleSheet => style !== null);
+      try {
+        if (hasShadowRoot(targetHost))
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
+            stylesToAdopt;
+        else if (targetHost.nodeName === '#document')
+          (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+        // Assignment succeeded — now it is safe to update the mirror so that
+        // future style-rule mutations target the clones rather than the
+        // foreign sheets.
+        for (const { styleId, clone } of mirrorUpdates) {
+          this.styleMirror.replace(styleId, clone);
+        }
+      } catch (e) {
+        this.warn('adoptedStyleSheets assignment failed', e);
+        // Mirror is intentionally NOT updated: the sheets were never adopted.
+      }
 
       /**
        * In the live mode where events are transferred over network without strict order guarantee, some newer events are applied before some old events and adopted stylesheets may haven't been created.
        * This retry mechanism can help resolve this situation.
        */
+      // Retry only when some styleIds are not yet in the mirror (filtered out
+      // as null above). Cloning failures do NOT reduce the length — they fall
+      // back to the original sheet and still appear in stylesToAdopt — so this
+      // condition correctly targets only the "sheet not yet created" case.
       if (stylesToAdopt.length !== styleIds.length && count < MAX_RETRY_TIME) {
         setTimeout(
           () => adoptStyleSheets(targetHost, styleIds),
