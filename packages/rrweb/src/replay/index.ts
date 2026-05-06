@@ -172,8 +172,11 @@ export class Replayer {
   private pendingCaptureTimer: ReturnType<typeof setTimeout> | null = null;
   private lastMouseDownEvent: [Node, Event] | null = null;
 
-  // Keep the rootNode of the last hovered element. So  when hovering a new element, we can remove the last hovered element's :hover style.
-  private lastHoveredRootNode: Document | ShadowRoot;
+  // Keep track of all root nodes (Document and ShadowRoots) that received
+  // :hover classes during the last hover. When hovering a new element we need
+  // to clean up all of them — not just the deepest shadow root — because the
+  // hover traversal crosses shadow DOM boundaries.
+  private lastHoveredRootNodes: Set<Document | ShadowRoot> = new Set();
 
   // In the fast-forward mode, only the last selection data needs to be applied.
   private lastSelectionData: selectionData | null = null;
@@ -2557,18 +2560,44 @@ export class Replayer {
   }
 
   private hoverElements(el: Element) {
-    (this.lastHoveredRootNode || this.iframe.contentDocument)
-      ?.querySelectorAll('.\\:hover')
-      .forEach((hoveredEl) => {
-        hoveredEl.classList.remove(':hover');
-      });
-    this.lastHoveredRootNode = el.getRootNode() as Document | ShadowRoot;
+    // Remove :hover from all root nodes that were touched during the last hover.
+    if (this.lastHoveredRootNodes.size > 0) {
+      for (const rootNode of this.lastHoveredRootNodes) {
+        rootNode.querySelectorAll('.\\:hover').forEach((hoveredEl) => {
+          hoveredEl.classList.remove(':hover');
+        });
+      }
+      this.lastHoveredRootNodes.clear();
+    } else {
+      this.iframe.contentDocument
+        ?.querySelectorAll('.\\:hover')
+        .forEach((hoveredEl) => {
+          hoveredEl.classList.remove(':hover');
+        });
+    }
+
+    // Walk up the ancestor chain, crossing shadow DOM boundaries by jumping
+    // from a shadow root to its host element.
     let currentEl: Element | null = el;
     while (currentEl) {
+      this.lastHoveredRootNodes.add(
+        currentEl.getRootNode() as Document | ShadowRoot,
+      );
       if (currentEl.classList) {
         currentEl.classList.add(':hover');
       }
-      currentEl = currentEl.parentElement;
+      if (currentEl.parentElement) {
+        currentEl = currentEl.parentElement;
+      } else {
+        // parentElement is null — either we reached the Document or a ShadowRoot.
+        // If it's a ShadowRoot, continue traversal from the shadow host.
+        const rootNode = currentEl.getRootNode();
+        if (rootNode && 'host' in rootNode && (rootNode as ShadowRoot).host) {
+          currentEl = (rootNode as ShadowRoot).host;
+        } else {
+          break;
+        }
+      }
     }
   }
 

@@ -13,6 +13,7 @@ import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
 import iframeEvents from './events/iframe';
 import hoverInIframeShadowDom from './events/iframe-shadowdom-hover';
+import hoverInNestedShadowDom from './events/iframe-shadowdom-hover-nested';
 import inputEvents from './events/input';
 import orderingEvents from './events/ordering';
 import scrollEvents from './events/scroll';
@@ -1265,6 +1266,117 @@ describe('replayer', function () {
         () => document.querySelector('span')?.className,
       ),
     ).toBe(':hover');
+  });
+
+  it('should propagate hover across multi-level nested shadow DOMs', async () => {
+    await page.evaluate(`events = ${JSON.stringify(hoverInNestedShadowDom)}`);
+
+    await page.evaluate(`
+      const { Replayer } = rrweb;
+      const replayer = new Replayer(events);
+      replayer.pause(550);
+    `);
+    const replayerIframe = await page.$('iframe');
+    const contentDocument = await replayerIframe!.contentFrame()!;
+    const iframe = await contentDocument!.$('iframe');
+    expect(iframe).not.toBeNull();
+    const docInIFrame = await iframe?.contentFrame();
+    expect(docInIFrame).not.toBeNull();
+
+    // At 500ms: hover on regular span (id:16)
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > span')?.className,
+      ),
+    ).toBe(':hover');
+    // Innermost span should not have hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        const innerHost = outerSR?.querySelector('div');
+        const innerSR = innerHost?.shadowRoot;
+        return (innerSR?.childNodes[0] as HTMLElement)?.className;
+      }),
+    ).toBe('');
+
+    // At 1000ms: hover innermost span (id:14) — 2 levels of shadow DOM
+    await page.evaluate('replayer.pause(1050);');
+    // Regular span should lose hover
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > span')?.className,
+      ),
+    ).toBe('');
+    // Innermost span gets hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        const innerHost = outerSR?.querySelector('div');
+        const innerSR = innerHost?.shadowRoot;
+        return (innerSR?.childNodes[0] as HTMLElement)?.className;
+      }),
+    ).toBe(':hover');
+    // Inner shadow host also gets hover (traversal crossed inner boundary)
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        return (outerSR?.querySelector('div') as HTMLElement)?.className;
+      }),
+    ).toContain(':hover');
+    // Outer shadow host also gets hover (traversal crossed outer boundary)
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > div')?.className,
+      ),
+    ).toContain(':hover');
+
+    // At 1500ms: hover outer shadow span (id:15) — 1 level deep
+    await page.evaluate('replayer.pause(1550);');
+    // Innermost span should lose hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        const innerHost = outerSR?.querySelector('div');
+        const innerSR = innerHost?.shadowRoot;
+        return (innerSR?.childNodes[0] as HTMLElement)?.className;
+      }),
+    ).toBe('');
+    // Inner shadow host should lose hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        return (outerSR?.querySelector('div') as HTMLElement)?.className;
+      }),
+    ).toBe('');
+    // Outer shadow span gets hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        return (outerSR?.querySelector('span') as HTMLElement)?.className;
+      }),
+    ).toBe(':hover');
+
+    // At 2000ms: hover regular span (id:16) again — cleanup from shadow roots
+    await page.evaluate('replayer.pause(2050);');
+    // Regular span gets hover back
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > span')?.className,
+      ),
+    ).toBe(':hover');
+    // Outer shadow span loses hover
+    expect(
+      await docInIFrame?.evaluate(() => {
+        const outerSR = document.querySelector('div')?.shadowRoot;
+        return (outerSR?.querySelector('span') as HTMLElement)?.className;
+      }),
+    ).toBe('');
+    // Outer shadow host loses hover
+    expect(
+      await docInIFrame?.evaluate(
+        () => document.querySelector('body > div')?.className,
+      ),
+    ).toBe('');
   });
 
   it('should replay styles with :define pseudo-class', async () => {
