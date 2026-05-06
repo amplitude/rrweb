@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>mutation-heavy fixture</title>
+    <style>
+      .item {
+        padding: 4px;
+        border-bottom: 1px solid #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      /**
+       * Simulates a React-style reconciliation pattern:
+       *   1. Create a list of 1 000 nodes (mount)
+       *   2. Swap every other node for a newly-created one (reconcile)
+       *   3. Remove all nodes (unmount)
+       * One full cycle = one "render pass".
+       *
+       * window.runWorkload(cycles) runs the given number of cycles and returns
+       * a Promise that resolves when all DOM work is done.
+       *
+       * window.runWorkload() (no argument) runs 10 cycles by default — enough
+       * for benchmarking without hanging the page forever.
+       */
+      (function () {
+        var ITEMS = 1000;
+        var root = document.getElementById('root');
+
+        function mount() {
+          var frag = document.createDocumentFragment();
+          for (var i = 0; i < ITEMS; i++) {
+            var node = document.createElement('div');
+            node.className = 'item';
+            node.setAttribute('data-index', String(i));
+            node.textContent = 'Item ' + i;
+            frag.appendChild(node);
+          }
+          root.appendChild(frag);
+        }
+
+        function reconcile() {
+          var children = Array.prototype.slice.call(root.children);
+          for (var i = 0; i < children.length; i += 2) {
+            var replacement = document.createElement('div');
+            replacement.className = 'item updated';
+            replacement.setAttribute('data-index', String(i));
+            replacement.setAttribute('data-updated', 'true');
+            replacement.textContent = 'Updated item ' + i;
+            root.replaceChild(replacement, children[i]);
+          }
+        }
+
+        function unmount() {
+          while (root.firstChild) {
+            root.removeChild(root.firstChild);
+          }
+        }
+
+        function tick() {
+          return new Promise(function (resolve) {
+            requestAnimationFrame(resolve);
+          });
+        }
+
+        window.runWorkload = async function (cycles) {
+          cycles = cycles !== undefined ? cycles : 10;
+          for (var c = 0; c < cycles; c++) {
+            mount();
+            await tick();
+            reconcile();
+            await tick();
+            unmount();
+            await tick();
+          }
+        };
+      })();
+    </script>
+  </body>
+</html>
