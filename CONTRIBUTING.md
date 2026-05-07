@@ -15,7 +15,7 @@ We actively welcome your pull requests (PRs)!
 1. Fork the repo and create your branch from `master`.
 2. If you've added code that should be tested, add tests
 3. Ensure the test suite passes or ask for help as to why tests are failing
-4. We use [changesets](https://github.com/changesets/changesets/blob/main/docs/intro-to-using-changesets.md) to enable you to easily document your PR so that it can be packaged up into the next release. A github plugin will prompt you to fill in your changeset if you haven't already done so.
+4. Use a conventional-commit-style PR title (`feat:`, `fix:`, `perf:`, `chore:`, etc.). The merge commit will use this title — semantic-release reads it to compute the next version. See [conventionalcommits.org](https://www.conventionalcommits.org/).
 5. If you've changed APIs, update the documentation.
 6. Make sure your code lints and typechecks.
 
@@ -38,6 +38,14 @@ clear and has sufficient instructions to be able to reproduce the issue.
 ## Coding style
 
 See [documentation](docs/development/coding-style.md)
+
+## Releases
+
+Releases are fully automated via [semantic-release](https://semantic-release.gitbook.io/) driven by conventional-commit PR titles.
+
+- **`master`** — merges publish a new GA release (`X.Y.Z`) to npm under the `latest` dist-tag.
+- **`alpha`** — merges publish a prerelease (`X.Y.Z-alpha.N`) under the `alpha` dist-tag.
+- No manual version bumps. The next version is derived from PR titles since the last release.
 
 ## License
 
