@@ -1,5 +1,13 @@
 # @amplitude/rrweb-record
 
+## 2.0.0-alpha.41
+
+### Patch Changes
+
+- Updated dependencies [[`d19821b`](https://github.com/amplitude/rrweb/commit/d19821b6e4d5cb3516b5e2a76ff8fa65dc12d182)]:
+  - @amplitude/rrweb@2.0.0-alpha.41
+  - @amplitude/rrweb-types@2.0.0-alpha.41
+
 ## 2.0.0-alpha.40
 
 ### Patch Changes

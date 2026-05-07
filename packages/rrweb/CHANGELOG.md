@@ -1,5 +1,17 @@
 # rrweb
 
+## 2.0.0-alpha.41
+
+### Patch Changes
+
+- [#106](https://github.com/amplitude/rrweb/pull/106) [`d19821b`](https://github.com/amplitude/rrweb/commit/d19821b6e4d5cb3516b5e2a76ff8fa65dc12d182) Thanks [@lewgordon-amplitude](https://github.com/lewgordon-amplitude)! - fix(record): prevent `Mirror.idNodeMap` leak when removed nodes have no mirror id. Serialized descendants of removed-but-unserialized nodes are now correctly evicted via `mapRemoves`.
+
+- Updated dependencies []:
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.41
+  - @amplitude/rrdom@2.0.0-alpha.41
+  - @amplitude/rrweb-types@2.0.0-alpha.41
+  - @amplitude/rrweb-utils@2.0.0-alpha.41
+
 ## 2.0.0-alpha.40
 
 ### Minor Changes

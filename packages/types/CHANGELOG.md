@@ -1,5 +1,7 @@
 # @rrweb/types
 
+## 2.0.0-alpha.41
+
 ## 2.0.0-alpha.40
 
 ### Patch Changes
