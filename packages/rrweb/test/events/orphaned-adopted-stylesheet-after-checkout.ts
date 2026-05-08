@@ -49,7 +49,13 @@ const events: eventWithTime[] = [
             tagName: 'html',
             attributes: {},
             childNodes: [
-              { type: 2, tagName: 'head', attributes: {}, childNodes: [], id: 4 },
+              {
+                type: 2,
+                tagName: 'head',
+                attributes: {},
+                childNodes: [],
+                id: 4,
+              },
               {
                 type: 2,
                 tagName: 'body',
@@ -93,7 +99,11 @@ const events: eventWithTime[] = [
                         tagName: 'span',
                         attributes: {},
                         childNodes: [
-                          { type: 3, textContent: 'persistent content', id: 11 },
+                          {
+                            type: 3,
+                            textContent: 'persistent content',
+                            id: 11,
+                          },
                         ],
                         id: 10,
                         isShadow: true,
@@ -147,7 +157,13 @@ const events: eventWithTime[] = [
             tagName: 'html',
             attributes: {},
             childNodes: [
-              { type: 2, tagName: 'head', attributes: {}, childNodes: [], id: 4 },
+              {
+                type: 2,
+                tagName: 'head',
+                attributes: {},
+                childNodes: [],
+                id: 4,
+              },
               {
                 type: 2,
                 tagName: 'body',
@@ -164,7 +180,11 @@ const events: eventWithTime[] = [
                         tagName: 'span',
                         attributes: {},
                         childNodes: [
-                          { type: 3, textContent: 'persistent content', id: 11 },
+                          {
+                            type: 3,
+                            textContent: 'persistent content',
+                            id: 11,
+                          },
                         ],
                         id: 10,
                         isShadow: true,
@@ -200,7 +220,9 @@ const events: eventWithTime[] = [
       source: IncrementalSource.AdoptedStyleSheet,
       id: 1,
       styleIds: [],
-      styles: [{ styleId: 1, rules: [{ rule: 'span { color: red; }', index: 0 }] }],
+      styles: [
+        { styleId: 1, rules: [{ rule: 'span { color: red; }', index: 0 }] },
+      ],
     },
     timestamp: now + 410,
   },

@@ -380,9 +380,10 @@ export function record<T = eventWithTime>(
     // snapshot walk only visits currently-attached hosts.  We re-emit their
     // rules in a synthetic AdoptedStyleSheet event right after the FS so the
     // replayer's styleMirror stays complete across FullSnapshot checkouts.
-    const preResetEntries: Array<[number, CSSStyleSheet]> = captureAdoptedStyleSheets
-      ? Array.from(stylesheetManager.styleMirror.getEntries())
-      : [];
+    const preResetEntries: Array<[number, CSSStyleSheet]> =
+      captureAdoptedStyleSheets
+        ? Array.from(stylesheetManager.styleMirror.getEntries())
+        : [];
 
     // When we take a full snapshot, old tracked StyleSheets need to be removed.
     stylesheetManager.reset();
@@ -468,7 +469,10 @@ export function record<T = eventWithTime>(
         snapshotStyleIds.add(id);
       }
 
-      const orphanStyles: { styleId: number; rules: { rule: string; index: number }[] }[] = [];
+      const orphanStyles: {
+        styleId: number;
+        rules: { rule: string; index: number }[];
+      }[] = [];
       for (const [styleId, sheet] of preResetEntries) {
         if (snapshotStyleIds.has(styleId)) continue; // already inlined in FS
         let rules: { rule: string; index: number }[] = [];
