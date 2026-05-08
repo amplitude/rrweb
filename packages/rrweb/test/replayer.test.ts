@@ -8,6 +8,7 @@ import adoptedStyleSheet from './events/adopted-style-sheet';
 import adoptedStyleSheetInSnapshot from './events/adopted-style-sheet-in-snapshot';
 import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shared-in-snapshot';
 import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
+import orphanedAdoptedStyleSheetAfterCheckout from './events/orphaned-adopted-stylesheet-after-checkout';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
@@ -1329,5 +1330,44 @@ describe('replayer', function () {
 
     // Assert the SCRIPT_PLACEHOLDER is not present on the page.
     expect(iframe).not.toContain('SCRIPT_PLACEHOLDER');
+  });
+
+  it('applies orphaned adoptedStyleSheet rules re-emitted by synthetic source-15 after checkout FS', async () => {
+    // This test validates that the replayer correctly processes the synthetic
+    // AdoptedStyleSheet (source-15) event that the fixed recorder emits after a
+    // checkout FullSnapshot to re-introduce rules for sheets whose hosting element
+    // was removed from the DOM before the snapshot was taken (SR-4260).
+    //
+    // The event stream in orphanedAdoptedStyleSheetAfterCheckout contains:
+    //   1. Initial FS with shadow-host (styleId=1 rules inlined) + shadow-host2 (adopts styleId=1)
+    //   2. Mutation removing shadow-host
+    //   3. Checkout FS that omits shadow-host, so styleId=1 rules are absent
+    //   4. Synthetic source-15: {id: rootDocId, styleIds: [], styles: [{styleId:1, rules:[...]}]}
+    //   5. source-15: shadow-host2 re-adopts styleId=1 (rules:[])
+    //
+    // Without the fix (event 4 removed), step 5 would fail because styleMirror
+    // no longer knows about styleId=1 after the checkout rebuild.
+    await page.evaluate(`
+      events = ${JSON.stringify(orphanedAdoptedStyleSheetAfterCheckout)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(700);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // shadow-host2's shadow root span should be red — the rule from styleId=1
+    // must survive the checkout FS and be re-applied via the synthetic event.
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host2')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
   });
 });

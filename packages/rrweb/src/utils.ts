@@ -539,6 +539,17 @@ export class StyleSheetMirror {
     return this.idStyleMap.get(id) || null;
   }
 
+  /**
+   * Iterate all registered (id, CSSStyleSheet) pairs.
+   * Used by the recorder to detect sheets that were registered before a
+   * full snapshot but whose adopting host is no longer in the DOM, so
+   * they would be omitted from the snapshot body and lost on replay after
+   * a FullSnapshot rebuild.
+   */
+  getEntries(): IterableIterator<[number, CSSStyleSheet]> {
+    return this.idStyleMap.entries();
+  }
+
   reset(): void {
     this.styleIDMap = new WeakMap();
     this.idStyleMap = new Map();

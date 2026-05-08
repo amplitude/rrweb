@@ -730,6 +730,68 @@ describe('record', function (this: ISuite) {
     expect(hasIncrementalWithRules).toBe(true);
   });
 
+  it('emits synthetic source-15 event after checkout FS to re-carry rules of orphaned adoptedStyleSheets', async () => {
+    // A "transient" shadow host adopts a stylesheet, then is removed from the
+    // DOM before a checkout FullSnapshot.  Without the fix the recorder would
+    // reset() its styleMirror and the rules would be gone forever.  With the
+    // fix it should emit a source-15 event (styleIds:[], styles:[{styleId, rules}])
+    // immediately after the checkout FS so the replayer can repopulate its
+    // styleMirror across the rebuild.
+    await ctx.page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        // Create a transient shadow host that adopts a stylesheet.
+        const host = document.createElement('div');
+        host.id = 'transient-host';
+        document.body.appendChild(host);
+        host.attachShadow({ mode: 'open' });
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync!('span { color: red; }');
+        host.shadowRoot!.adoptedStyleSheets = [sheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit });
+
+        setTimeout(() => {
+          // Remove the transient host from the DOM — its stylesheet becomes orphaned.
+          document.body.removeChild(host);
+        }, 5);
+
+        setTimeout(() => {
+          // Trigger a checkout FullSnapshot while the host is absent.
+          rrweb.record.takeFullSnapshot(true);
+          resolve();
+        }, 10);
+      });
+    });
+    await waitForRAF(ctx.page);
+
+    // Locate the checkout FullSnapshot.
+    const checkoutFsIdx = ctx.events.findIndex(
+      (e) => e.type === EventType.FullSnapshot,
+    );
+    // There must be a second FullSnapshot (the checkout).
+    const checkoutFsIdx2 = ctx.events.findIndex(
+      (e, i) => i > checkoutFsIdx && e.type === EventType.FullSnapshot,
+    );
+    expect(checkoutFsIdx2).toBeGreaterThan(checkoutFsIdx);
+
+    // The event immediately following the checkout FS must be a source-15 with
+    // styleIds:[] and at least one entry in styles[] carrying the orphaned rules.
+    const syntheticEvent = ctx.events[checkoutFsIdx2 + 1];
+    expect(syntheticEvent).toBeDefined();
+    expect(syntheticEvent.type).toBe(EventType.IncrementalSnapshot);
+    const data = syntheticEvent.data as any;
+    expect(data.source).toBe(IncrementalSource.AdoptedStyleSheet);
+    expect(data.styleIds).toEqual([]);
+    expect(Array.isArray(data.styles)).toBe(true);
+    expect(data.styles.length).toBeGreaterThan(0);
+    // The orphaned sheet must carry its CSS rules.
+    const orphanEntry = data.styles[0];
+    expect(Array.isArray(orphanEntry.rules)).toBe(true);
+    expect(orphanEntry.rules.length).toBeGreaterThan(0);
+    expect(orphanEntry.rules[0].rule).toContain('color: red');
+  });
+
   it('captures stylesheets in iframes with `blob:` url', async () => {
     await ctx.page.evaluate(() => {
       const iframe = document.createElement('iframe');
