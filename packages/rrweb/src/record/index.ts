@@ -463,10 +463,16 @@ export function record<T = eventWithTime>(
     // below will overwrite adoptedStyleSheets with the correct set.
     if (captureAdoptedStyleSheets && preResetEntries.length > 0) {
       // After snapshot() the styleMirror contains exactly the sheets that were
-      // inlined into the FS.  Any id NOT present there was orphaned.
-      const snapshotStyleIds = new Set<number>();
-      for (const [id] of stylesheetManager.styleMirror.getEntries()) {
-        snapshotStyleIds.add(id);
+      // inlined into the FS.  Any sheet object NOT present there was orphaned.
+      // We compare by CSSStyleSheet object identity (not by id) because
+      // stylesheetManager.reset() resets the id counter to 1, so post-reset
+      // ids live in a different namespace from pre-reset ids.  Comparing ids
+      // would silently drop orphans whose old id collides with a newly-assigned
+      // id, and would spuriously emit active sheets whose old id is > the new
+      // count.
+      const snapshotSheets = new Set<CSSStyleSheet>();
+      for (const [, sheet] of stylesheetManager.styleMirror.getEntries()) {
+        snapshotSheets.add(sheet);
       }
 
       const orphanStyles: {
@@ -474,7 +480,7 @@ export function record<T = eventWithTime>(
         rules: { rule: string; index: number }[];
       }[] = [];
       for (const [styleId, sheet] of preResetEntries) {
-        if (snapshotStyleIds.has(styleId)) continue; // already inlined in FS
+        if (snapshotSheets.has(sheet)) continue; // already inlined in FS
         let rules: { rule: string; index: number }[] = [];
         try {
           rules = Array.from(sheet.cssRules, (r, index) => ({

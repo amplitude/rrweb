@@ -792,6 +792,85 @@ describe('record', function (this: ISuite) {
     expect(orphanEntry.rules[0].rule).toContain('color: red');
   });
 
+  it('does not drop orphaned sheet or emit spurious orphan when pre/post-reset ids collide', async () => {
+    // Regression test for the id-namespace collision bug:
+    // stylesheetManager.reset() resets the id counter to 1, so comparing
+    // pre-reset ids against post-reset ids is invalid.  When an orphaned
+    // sheet's pre-reset id falls within the range of newly assigned ids it
+    // would be silently dropped; when an active sheet's pre-reset id is
+    // outside that range it would be spuriously emitted as an orphan.
+    //
+    // Setup:
+    //   - orphan host (removed before checkout) adopts a sheet with "color: green" → pre-reset id=1
+    //   - persistent host (kept in DOM) adopts a sheet with "color: blue"          → pre-reset id=2
+    // After reset and snapshot the persistent sheet gets new id=1 (only sheet
+    // inlined).  The buggy code would see snapshotStyleIds={1}, match the
+    // orphan's old id=1, and drop it.  The fix compares by object identity so
+    // the orphan (different CSSStyleSheet object) is correctly emitted.
+    await ctx.page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        // Orphan host — will be removed before checkout.
+        const orphanHost = document.createElement('div');
+        orphanHost.id = 'orphan-host';
+        document.body.appendChild(orphanHost);
+        orphanHost.attachShadow({ mode: 'open' });
+        const orphanSheet = new CSSStyleSheet();
+        orphanSheet.replaceSync!('span { color: green; }');
+        orphanHost.shadowRoot!.adoptedStyleSheets = [orphanSheet];
+
+        // Persistent host — stays in DOM through checkout.
+        const persistentHost = document.createElement('div');
+        persistentHost.id = 'persistent-host';
+        document.body.appendChild(persistentHost);
+        persistentHost.attachShadow({ mode: 'open' });
+        const persistentSheet = new CSSStyleSheet();
+        persistentSheet.replaceSync!('span { color: blue; }');
+        persistentHost.shadowRoot!.adoptedStyleSheets = [persistentSheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit });
+
+        setTimeout(() => {
+          // Remove only the orphan host — persistent host stays.
+          document.body.removeChild(orphanHost);
+        }, 5);
+
+        setTimeout(() => {
+          rrweb.record.takeFullSnapshot(true);
+          resolve();
+        }, 10);
+      });
+    });
+    await waitForRAF(ctx.page);
+
+    // Find the second (checkout) FullSnapshot.
+    const firstFsIdx = ctx.events.findIndex(
+      (e) => e.type === EventType.FullSnapshot,
+    );
+    const checkoutFsIdx = ctx.events.findIndex(
+      (e, i) => i > firstFsIdx && e.type === EventType.FullSnapshot,
+    );
+    expect(checkoutFsIdx).toBeGreaterThan(firstFsIdx);
+
+    // The event immediately after the checkout FS must be the synthetic source-15.
+    const syntheticEvent = ctx.events[checkoutFsIdx + 1];
+    expect(syntheticEvent).toBeDefined();
+    expect(syntheticEvent.type).toBe(EventType.IncrementalSnapshot);
+    const data = syntheticEvent.data as any;
+    expect(data.source).toBe(IncrementalSource.AdoptedStyleSheet);
+    expect(data.styleIds).toEqual([]);
+    expect(Array.isArray(data.styles)).toBe(true);
+
+    // The orphan's "color: green" rule must survive.
+    const allRules: string[] = data.styles.flatMap(
+      (s: any) => s.rules.map((r: any) => r.rule as string),
+    );
+    expect(allRules.some((r) => r.includes('color: green'))).toBe(true);
+
+    // The persistent sheet's "color: blue" rule must NOT appear as a spurious orphan.
+    expect(allRules.some((r) => r.includes('color: blue'))).toBe(false);
+  });
+
   it('captures stylesheets in iframes with `blob:` url', async () => {
     await ctx.page.evaluate(() => {
       const iframe = document.createElement('iframe');
