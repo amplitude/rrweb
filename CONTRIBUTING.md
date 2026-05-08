@@ -41,11 +41,31 @@ See [documentation](docs/development/coding-style.md)
 
 ## Releases
 
-Releases are fully automated via [semantic-release](https://semantic-release.gitbook.io/) driven by conventional-commit PR titles.
+Releases are fully automated via [semantic-release](https://semantic-release.gitbook.io/) driven by conventional-commit PR titles. The next version is derived from PR titles since the last release — no manual version bumps.
 
-- **`master`** — merges publish a new GA release (`X.Y.Z`) to npm under the `latest` dist-tag.
-- **`alpha`** — merges publish a prerelease (`X.Y.Z-alpha.N`) under the `alpha` dist-tag.
-- No manual version bumps. The next version is derived from PR titles since the last release.
+### Stable releases
+
+Every merge to `master` publishes a new GA release (`X.Y.Z`) to npm under the `latest` dist-tag.
+
+### Prereleases (occasional, on-demand)
+
+Prereleases ride a short-lived `alpha` branch that exists only while a prerelease cycle is active. The full lifecycle:
+
+1. **Cut `alpha` from `master`** when starting a prerelease cycle:
+   ```sh
+   git checkout master && git pull
+   git checkout -b alpha
+   git push -u origin alpha
+   ```
+2. **Open PRs targeting `alpha`** instead of `master`. Each merge publishes `X.Y.Z-alpha.N` under the `alpha` dist-tag (counter auto-increments).
+3. **Promote to GA** by opening a PR `alpha` → `master` and merging it. The next release on `master` publishes the stable `X.Y.Z` and supersedes the prereleases.
+4. **Delete `alpha`** locally and on origin once promoted. The next prerelease cycle starts fresh from `master`:
+   ```sh
+   git push origin --delete alpha
+   git branch -D alpha
+   ```
+
+Consumers install the latest prerelease with `npm install @amplitude/rrweb@alpha`.
 
 ## License
 
