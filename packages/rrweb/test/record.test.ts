@@ -862,8 +862,8 @@ describe('record', function (this: ISuite) {
     expect(Array.isArray(data.styles)).toBe(true);
 
     // The orphan's "color: green" rule must survive.
-    const allRules: string[] = data.styles.flatMap(
-      (s: any) => s.rules.map((r: any) => r.rule as string),
+    const allRules: string[] = data.styles.flatMap((s: any) =>
+      s.rules.map((r: any) => r.rule as string),
     );
     expect(allRules.some((r) => r.includes('color: green'))).toBe(true);
 
