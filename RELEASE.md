@@ -6,11 +6,11 @@ Releases of every `@amplitude/rrweb*` package are driven by **Lerna** in fixed-v
 
 Open the [`Release` workflow](https://github.com/amplitude/rrweb/actions/workflows/release.yml) → "Run workflow" → pick a `releaseType`:
 
-| Type | Branch required | What it does |
-| --- | --- | --- |
-| `release` | `master` | Bump versions via conventional commits, push commit + tag, publish to npm under `latest`, create GitHub Release. |
-| `prerelease` | `alpha` | Bump to `X.Y.Z-alpha.N`, push commit + tag, publish to npm under `alpha`. |
-| `dry-run` | any | Compute the next version locally without pushing or publishing. Use to preview what `release` would do. |
+| Type         | Branch required | What it does                                                                                                     |
+| ------------ | --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `release`    | `master`        | Bump versions via conventional commits, push commit + tag, publish to npm under `latest`, create GitHub Release. |
+| `prerelease` | `alpha`         | Bump to `X.Y.Z-alpha.N`, push commit + tag, publish to npm under `alpha`.                                        |
+| `dry-run`    | any             | Compute the next version locally without pushing or publishing. Use to preview what `release` would do.          |
 
 The `authorize` job enforces branch + actor (write permission required).
 
@@ -43,12 +43,12 @@ The fix: a write-enabled SSH **deploy key** is registered on the repo and added 
 
 ### What's in place
 
-| Resource | Where | Purpose |
-| --- | --- | --- |
-| `semantic-release deploy key` | Repo settings → Deploy keys | Write-enabled. Public half. (Name retained from initial setup; covers both Lerna and any future tool that needs to push.) |
-| `DEPLOY_KEY` Actions secret | Repo settings → Secrets and variables → Actions | Private half. Read by `actions/checkout` via `ssh-key:`. |
-| `DeployKey` bypass actor | Master ruleset → Bypass list | Lets pushes signed with the key skip the "PR required" rule. |
-| `amplitude-sdk-bot` git identity | `release.yml` env vars on the Release job | Author of the version-bump commit. |
+| Resource                         | Where                                           | Purpose                                                                                                                   |
+| -------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `semantic-release deploy key`    | Repo settings → Deploy keys                     | Write-enabled. Public half. (Name retained from initial setup; covers both Lerna and any future tool that needs to push.) |
+| `DEPLOY_KEY` Actions secret      | Repo settings → Secrets and variables → Actions | Private half. Read by `actions/checkout` via `ssh-key:`.                                                                  |
+| `DeployKey` bypass actor         | Master ruleset → Bypass list                    | Lets pushes signed with the key skip the "PR required" rule.                                                              |
+| `amplitude-sdk-bot` git identity | `release.yml` env vars on the Release job       | Author of the version-bump commit.                                                                                        |
 
 ### Rotating the deploy key
 
@@ -88,7 +88,7 @@ If this repo ever loses its release credentials:
    ```
    with one additional entry in `bypass_actors`:
    ```json
-   {"actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always"}
+   { "actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always" }
    ```
 3. Confirm `.github/workflows/release.yml` references `secrets.DEPLOY_KEY` in the checkout step.
 
@@ -97,6 +97,7 @@ If this repo ever loses its release credentials:
 ### `GH013: Changes must be made through a pull request`
 
 The deploy key isn't bypassing the ruleset. Check, in order:
+
 1. `DEPLOY_KEY` secret exists (`gh secret list --repo amplitude/rrweb`).
 2. The checkout step has `ssh-key: ${{ secrets.DEPLOY_KEY }}`.
 3. The master ruleset has a `DeployKey` bypass actor (`gh api repos/amplitude/rrweb/rulesets/<id>` → `bypass_actors`).
