@@ -69,6 +69,10 @@ Prereleases ride a short-lived `alpha` branch that exists only while a prereleas
 
 Consumers install the latest prerelease with `npm install @amplitude/rrweb@alpha`.
 
+### Release infrastructure
+
+See [RELEASE.md](RELEASE.md) for the deploy-key + bypass-actor setup that lets semantic-release push the release commit back to a protected `master`, plus rotation and troubleshooting procedures.
+
 ## License
 
 rrweb is [MIT licensed](https://github.com/rrweb-io/rrweb/blob/master/LICENSE).
