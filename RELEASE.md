@@ -128,6 +128,7 @@ Build prepublish hooks mutate tracked files (notably the `tsconfig.json` project
 OIDC trusted publishing isn't being used. npm publishing for this repo is configured to use [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers) (SR-3110, PR #89) — no static NPM_TOKEN should be in the publish flow. If `actions/setup-node` is configured with `registry-url:`, it writes an `.npmrc` containing `_authToken=${NODE_AUTH_TOKEN}`; whenever an authToken is present, npm uses it (or its placeholder) instead of attempting OIDC, and the registry returns 404 for the publish.
 
 Confirm in `release.yml`:
+
 - `actions/setup-node` does NOT set `registry-url:`
 - Publish steps do NOT set `NODE_AUTH_TOKEN`
 - `id-token: write` is in `permissions:` (so the OIDC token is available)
