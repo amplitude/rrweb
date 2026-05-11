@@ -8,12 +8,12 @@ The fix: a write-enabled **deploy key** is added as a `DeployKey` bypass actor o
 
 ## What's in place
 
-| Resource | Where | Purpose |
-| --- | --- | --- |
-| `semantic-release deploy key` | Repo settings → Deploy keys | Write-enabled. Public half. |
-| `DEPLOY_KEY` Actions secret | Repo settings → Secrets and variables → Actions | Private half. Read by `actions/checkout` via `ssh-key:`. |
-| `DeployKey` bypass actor | Master ruleset → Bypass list | Lets pushes signed with the key skip the "PR required" rule. |
-| `amplitude-sdk-bot` git identity | `release.yml` env vars on the Release step | Author of the release commit. |
+| Resource                         | Where                                           | Purpose                                                      |
+| -------------------------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| `semantic-release deploy key`    | Repo settings → Deploy keys                     | Write-enabled. Public half.                                  |
+| `DEPLOY_KEY` Actions secret      | Repo settings → Secrets and variables → Actions | Private half. Read by `actions/checkout` via `ssh-key:`.     |
+| `DeployKey` bypass actor         | Master ruleset → Bypass list                    | Lets pushes signed with the key skip the "PR required" rule. |
+| `amplitude-sdk-bot` git identity | `release.yml` env vars on the Release step      | Author of the release commit.                                |
 
 ## Rotation
 
@@ -55,7 +55,7 @@ If this repo ever loses its release credentials (e.g., new fork), the full setup
    ```
    where `ruleset.json` contains the existing ruleset spec with one additional entry in `bypass_actors`:
    ```json
-   {"actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always"}
+   { "actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always" }
    ```
 3. Confirm `.github/workflows/release.yml` references `secrets.DEPLOY_KEY` in the checkout step's `ssh-key:` and sets the `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars on the Release step.
 
@@ -64,6 +64,7 @@ If this repo ever loses its release credentials (e.g., new fork), the full setup
 ### Release step fails with `GH013: Changes must be made through a pull request`
 
 The deploy key isn't bypassing the ruleset. Check, in order:
+
 1. `DEPLOY_KEY` secret exists on the repo (`gh secret list --repo amplitude/rrweb`).
 2. The checkout step in `release.yml` has `ssh-key: ${{ secrets.DEPLOY_KEY }}`.
 3. The master ruleset has a `DeployKey` bypass actor (`gh api repos/amplitude/rrweb/rulesets/<id>` → `bypass_actors`).
