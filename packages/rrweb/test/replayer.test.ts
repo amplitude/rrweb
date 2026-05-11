@@ -1187,7 +1187,7 @@ describe('replayer', function () {
     ).toBe(true);
   });
 
-  it('preserves shadow-DOM adoptedStyleSheets across a seek-cache restore (SR-4260)', async () => {
+  it('preserves shadow-DOM adoptedStyleSheets across a seek-cache restore', async () => {
     // Regression: the seek cache used to omit onAdoptedStyleSheet when
     // serializing the cached snapshot, so restoring from a checkpoint dropped
     // every shadow host's adoptedStyleSheets and styling vanished after a
