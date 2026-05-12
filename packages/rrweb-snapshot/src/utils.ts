@@ -27,7 +27,13 @@ export function isShadowRoot(n: Node): n is ShadowRoot {
     // but only shadow roots have a `mode` property
     (n && 'host' in n && 'mode' in n && dom.host(n as ShadowRoot)) || null;
   return Boolean(
-    hostEl && 'shadowRoot' in hostEl && dom.shadowRoot(hostEl) === n,
+    hostEl &&
+      'shadowRoot' in hostEl &&
+      // For open shadow roots, verify by direct comparison.
+      // For closed shadow roots, element.shadowRoot returns null, so fall back
+      // to the toString check used by isNativeShadowDom.
+      (dom.shadowRoot(hostEl) === n ||
+        Object.prototype.toString.call(n) === '[object ShadowRoot]'),
   );
 }
 
