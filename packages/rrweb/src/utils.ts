@@ -539,6 +539,17 @@ export class StyleSheetMirror {
     return this.idStyleMap.get(id) || null;
   }
 
+  /**
+   * Replace the sheet stored under `id` with a new sheet instance.
+   * Used when a foreign-window sheet is cloned into the target window.
+   */
+  replace(id: number, sheet: CSSStyleSheet): void {
+    const existing = this.idStyleMap.get(id);
+    if (existing) this.styleIDMap.delete(existing);
+    this.styleIDMap.set(sheet, id);
+    this.idStyleMap.set(id, sheet);
+  }
+
   reset(): void {
     this.styleIDMap = new WeakMap();
     this.idStyleMap = new Map();
