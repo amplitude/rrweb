@@ -1842,8 +1842,8 @@ export class Replayer {
       const targetDoc = mutation.node.rootId
         ? mirror.getNode(mutation.node.rootId)
         : this.usingVirtualDom
-        ? this.virtualDom
-        : this.iframe.contentDocument;
+          ? this.virtualDom
+          : this.iframe.contentDocument;
       if (isSerializedIframe<typeof parent>(parent, mirror)) {
         this.attachDocumentToIframe(
           mutation,
@@ -2383,10 +2383,10 @@ export class Replayer {
       // @import rules are silently dropped by replaceSync/insertRule per
       // spec (they must precede other rules and cannot be re-fetched
       // without network access), so filter them out before copying.
-      const nonImportRules = Array.from(sheet.cssRules).filter((r) =>
-        typeof CSSImportRule !== 'undefined'
-          ? !(r instanceof CSSImportRule)
-          : !r.cssText.trimStart().startsWith('@import'),
+      // Use text-based check unconditionally because instanceof doesn't
+      // work across window contexts (sheet.cssRules are from foreign window).
+      const nonImportRules = Array.from(sheet.cssRules).filter(
+        (r) => !r.cssText.trimStart().startsWith('@import'),
       );
       const rulesText = nonImportRules.map((r) => r.cssText).join('\n');
       if (typeof clone.replaceSync === 'function') {
