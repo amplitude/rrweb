@@ -65,8 +65,9 @@ function makeCanvas(dataURL = 'data:image/png;base64,FAKE'): HTMLCanvasElement {
 
 function addTransferToImageBitmap(canvas: HTMLCanvasElement) {
   const fakeBitmap = { width: 100, height: 100, close: vi.fn() };
-  (canvas as unknown as Record<string, unknown>).transferToImageBitmap =
-    vi.fn().mockReturnValue(fakeBitmap);
+  (canvas as unknown as Record<string, unknown>).transferToImageBitmap = vi
+    .fn()
+    .mockReturnValue(fakeBitmap);
   return fakeBitmap;
 }
 
@@ -111,7 +112,10 @@ describe('canvas 2D fast-path (SR-4163)', () => {
 
     it('passes dataURLOptions to toDataURL', () => {
       const canvas = makeCanvas();
-      serializeArg(canvas, window, context, { type: 'image/webp', quality: 0.7 });
+      serializeArg(canvas, window, context, {
+        type: 'image/webp',
+        quality: 0.7,
+      });
       expect(canvas.toDataURL).toHaveBeenCalledWith('image/webp', 0.7);
     });
   });
@@ -170,10 +174,14 @@ describe('canvas 2D fast-path (SR-4163)', () => {
 
       // Add transferToImageBitmap to the prototype (global — all canvases).
       const fakeBitmap = { width: 100, height: 100, close: vi.fn() };
-      Object.defineProperty(HTMLCanvasElement.prototype, 'transferToImageBitmap', {
-        configurable: true,
-        value: vi.fn().mockReturnValue(fakeBitmap),
-      });
+      Object.defineProperty(
+        HTMLCanvasElement.prototype,
+        'transferToImageBitmap',
+        {
+          configurable: true,
+          value: vi.fn().mockReturnValue(fakeBitmap),
+        },
+      );
     });
 
     afterEach(() => {
@@ -203,7 +211,12 @@ describe('canvas 2D fast-path (SR-4163)', () => {
 
     it('resolves to { rr_type: HTMLImageElement, src: data:... } on worker response', async () => {
       const canvas = makeCanvas();
-      const promise = serializeArg(canvas, window, context, {}) as Promise<unknown>;
+      const promise = serializeArg(
+        canvas,
+        window,
+        context,
+        {},
+      ) as Promise<unknown>;
 
       // Grab the encodeId from the worker message.
       const [msg] = fakeWorkerInstance.postMessage.mock.calls[0] as [
@@ -214,7 +227,11 @@ describe('canvas 2D fast-path (SR-4163)', () => {
       // Simulate the worker posting back.
       fakeWorkerInstance.onmessage!(
         new MessageEvent('message', {
-          data: { encodeId: msg.encodeId, base64: 'ENCODED==', type: 'image/png' },
+          data: {
+            encodeId: msg.encodeId,
+            base64: 'ENCODED==',
+            type: 'image/png',
+          },
         }),
       );
 
