@@ -1,4 +1,21 @@
+# Change Log
+
+All notable changes to this project will be documented in this file.
+See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+## <small>2.1.1 (2026-05-11)</small>
+
+**Note:** Version bump only for package @amplitude/rrweb-player
+
 # rrweb-player
+
+## 2.0.0-alpha.40
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @amplitude/rrweb-replay@2.0.0-alpha.40
+  - @amplitude/rrweb-packer@2.0.0-alpha.40
 
 ## 2.0.0-alpha.39
 

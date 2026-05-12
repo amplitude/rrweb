@@ -1,5 +1,11 @@
 # @rrweb/types
 
+## 2.0.0-alpha.40
+
+### Patch Changes
+
+- [#101](https://github.com/amplitude/rrweb/pull/101) [`f66e0ab`](https://github.com/amplitude/rrweb/commit/f66e0ab409a391112e9204f32bd1977db72207da) Thanks [@lewgordon-amplitude](https://github.com/lewgordon-amplitude)! - Fix adoptedStyleSheets CSS not applied on replay when incremental AdoptedStyleSheet events are dropped in transit. CSS rules are now serialized inline in the full snapshot so replay is self-contained. Adds a `captureAdoptedStyleSheets` record option (default `true`) to opt out if snapshot size is a concern.
+
 ## 2.0.0-alpha.39
 
 ## 2.0.0-alpha.38
