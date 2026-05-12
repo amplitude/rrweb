@@ -628,7 +628,18 @@ exports[`record > captures adopted stylesheets in nested shadow doms and iframes
                         \\"childNodes\\": [],
                         \\"rootId\\": 29,
                         \\"id\\": 33,
-                        \\"isShadowHost\\": true
+                        \\"isShadowHost\\": true,
+                        \\"adoptedStyleSheets\\": [
+                          {
+                            \\"styleId\\": 2,
+                            \\"rules\\": [
+                              {
+                                \\"rule\\": \\"div { font-size: large; }\\",
+                                \\"index\\": 0
+                              }
+                            ]
+                          }
+                        ]
                       }
                     ],
                     \\"rootId\\": 29,
@@ -640,7 +651,18 @@ exports[`record > captures adopted stylesheets in nested shadow doms and iframes
               }
             ],
             \\"compatMode\\": \\"BackCompat\\",
-            \\"id\\": 29
+            \\"id\\": 29,
+            \\"adoptedStyleSheets\\": [
+              {
+                \\"styleId\\": 1,
+                \\"rules\\": [
+                  {
+                    \\"rule\\": \\"h1 { color: blue; }\\",
+                    \\"index\\": 0
+                  }
+                ]
+              }
+            ]
           }
         }
       ],
@@ -657,17 +679,6 @@ exports[`record > captures adopted stylesheets in nested shadow doms and iframes
       \\"id\\": 29,
       \\"styleIds\\": [
         1
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 1,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"h1 { color: blue; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   },
@@ -678,17 +689,6 @@ exports[`record > captures adopted stylesheets in nested shadow doms and iframes
       \\"id\\": 33,
       \\"styleIds\\": [
         2
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 2,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"div { font-size: large; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   },
@@ -849,7 +849,22 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
                       }
                     ],
                     \\"id\\": 10,
-                    \\"isShadowHost\\": true
+                    \\"isShadowHost\\": true,
+                    \\"adoptedStyleSheets\\": [
+                      {
+                        \\"styleId\\": 1,
+                        \\"rules\\": []
+                      },
+                      {
+                        \\"styleId\\": 2,
+                        \\"rules\\": [
+                          {
+                            \\"rule\\": \\"span { color: red; }\\",
+                            \\"index\\": 0
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     \\"type\\": 3,
@@ -889,7 +904,26 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
             \\"id\\": 3
           }
         ],
-        \\"id\\": 1
+        \\"id\\": 1,
+        \\"adoptedStyleSheets\\": [
+          {
+            \\"styleId\\": 1,
+            \\"rules\\": [
+              {
+                \\"rule\\": \\"div { color: yellow; }\\",
+                \\"index\\": 0
+              },
+              {
+                \\"rule\\": \\"h2 { color: orange; }\\",
+                \\"index\\": 1
+              },
+              {
+                \\"rule\\": \\"h3 { font-size: larger; }\\",
+                \\"index\\": 2
+              }
+            ]
+          }
+        ]
       },
       \\"initialOffset\\": {
         \\"left\\": 0,
@@ -904,25 +938,6 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
       \\"id\\": 1,
       \\"styleIds\\": [
         1
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 1,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"div { color: yellow; }\\",
-              \\"index\\": 0
-            },
-            {
-              \\"rule\\": \\"h2 { color: orange; }\\",
-              \\"index\\": 1
-            },
-            {
-              \\"rule\\": \\"h3 { font-size: larger; }\\",
-              \\"index\\": 2
-            }
-          ]
-        }
       ]
     }
   },
@@ -934,17 +949,6 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
       \\"styleIds\\": [
         1,
         2
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 2,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"span { color: red; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   },
@@ -1002,7 +1006,18 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
               }
             ],
             \\"compatMode\\": \\"BackCompat\\",
-            \\"id\\": 20
+            \\"id\\": 20,
+            \\"adoptedStyleSheets\\": [
+              {
+                \\"styleId\\": 3,
+                \\"rules\\": [
+                  {
+                    \\"rule\\": \\"h1 { color: blue; }\\",
+                    \\"index\\": 0
+                  }
+                ]
+              }
+            ]
           }
         }
       ],
@@ -1019,17 +1034,6 @@ exports[`record > captures adopted stylesheets in shadow doms and iframe 1`] = `
       \\"id\\": 20,
       \\"styleIds\\": [
         3
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 3,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"h1 { color: blue; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   },
@@ -1204,7 +1208,18 @@ exports[`record > captures adopted stylesheets of shadow doms in checkout full s
                       }
                     ],
                     \\"id\\": 7,
-                    \\"isShadowHost\\": true
+                    \\"isShadowHost\\": true,
+                    \\"adoptedStyleSheets\\": [
+                      {
+                        \\"styleId\\": 1,
+                        \\"rules\\": [
+                          {
+                            \\"rule\\": \\"h1 { color: blue; }\\",
+                            \\"index\\": 0
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     \\"type\\": 3,
@@ -1233,17 +1248,6 @@ exports[`record > captures adopted stylesheets of shadow doms in checkout full s
       \\"id\\": 7,
       \\"styleIds\\": [
         1
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 1,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"h1 { color: blue; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   },
@@ -1304,7 +1308,18 @@ exports[`record > captures adopted stylesheets of shadow doms in checkout full s
                       }
                     ],
                     \\"id\\": 7,
-                    \\"isShadowHost\\": true
+                    \\"isShadowHost\\": true,
+                    \\"adoptedStyleSheets\\": [
+                      {
+                        \\"styleId\\": 1,
+                        \\"rules\\": [
+                          {
+                            \\"rule\\": \\"h1 { color: blue; }\\",
+                            \\"index\\": 0
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     \\"type\\": 3,
@@ -1333,17 +1348,6 @@ exports[`record > captures adopted stylesheets of shadow doms in checkout full s
       \\"id\\": 7,
       \\"styleIds\\": [
         1
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 1,
-          \\"rules\\": [
-            {
-              \\"rule\\": \\"h1 { color: blue; }\\",
-              \\"index\\": 0
-            }
-          ]
-        }
       ]
     }
   }
@@ -1560,7 +1564,13 @@ exports[`record > captures mutations on adopted stylesheets 1`] = `
             \\"id\\": 3
           }
         ],
-        \\"id\\": 1
+        \\"id\\": 1,
+        \\"adoptedStyleSheets\\": [
+          {
+            \\"styleId\\": 1,
+            \\"rules\\": []
+          }
+        ]
       },
       \\"initialOffset\\": {
         \\"left\\": 0,
@@ -1575,12 +1585,6 @@ exports[`record > captures mutations on adopted stylesheets 1`] = `
       \\"id\\": 1,
       \\"styleIds\\": [
         1
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 1,
-          \\"rules\\": []
-        }
       ]
     }
   },
@@ -1638,7 +1642,13 @@ exports[`record > captures mutations on adopted stylesheets 1`] = `
               }
             ],
             \\"compatMode\\": \\"BackCompat\\",
-            \\"id\\": 12
+            \\"id\\": 12,
+            \\"adoptedStyleSheets\\": [
+              {
+                \\"styleId\\": 2,
+                \\"rules\\": []
+              }
+            ]
           }
         }
       ],
@@ -1655,12 +1665,6 @@ exports[`record > captures mutations on adopted stylesheets 1`] = `
       \\"id\\": 12,
       \\"styleIds\\": [
         2
-      ],
-      \\"styles\\": [
-        {
-          \\"styleId\\": 2,
-          \\"rules\\": []
-        }
       ]
     }
   },

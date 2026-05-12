@@ -1,4 +1,27 @@
+# Change Log
+
+All notable changes to this project will be documented in this file.
+See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+## <small>2.1.1 (2026-05-11)</small>
+
+- fix(replay): preserve shadow-DOM adoptedStyleSheets across seek-cache restores (SR-4260) (#111) ([b4382c4](https://github.com/amplitude/rrweb/commit/b4382c4)), closes [#111](https://github.com/amplitude/rrweb/issues/111)
+
 # rrweb
+
+## 2.0.0-alpha.40
+
+### Minor Changes
+
+- [#101](https://github.com/amplitude/rrweb/pull/101) [`f66e0ab`](https://github.com/amplitude/rrweb/commit/f66e0ab409a391112e9204f32bd1977db72207da) Thanks [@lewgordon-amplitude](https://github.com/lewgordon-amplitude)! - Fix adoptedStyleSheets CSS not applied on replay when incremental AdoptedStyleSheet events are dropped in transit. CSS rules are now serialized inline in the full snapshot so replay is self-contained. Adds a `captureAdoptedStyleSheets` record option (default `true`) to opt out if snapshot size is a concern.
+
+### Patch Changes
+
+- Updated dependencies [[`f66e0ab`](https://github.com/amplitude/rrweb/commit/f66e0ab409a391112e9204f32bd1977db72207da)]:
+  - @amplitude/rrweb-snapshot@2.0.0-alpha.40
+  - @amplitude/rrweb-types@2.0.0-alpha.40
+  - @amplitude/rrdom@2.0.0-alpha.40
+  - @amplitude/rrweb-utils@2.0.0-alpha.40
 
 ## 2.0.0-alpha.39
 

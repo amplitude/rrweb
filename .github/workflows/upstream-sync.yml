@@ -1,0 +1,16 @@
+name: Upstream Sync Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Skip push and PR creation (validate pipeline only)'
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    name: Sync upstream rrweb commits
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "Upstream sync stub. Full implementation coming in feat/upstream-sync."

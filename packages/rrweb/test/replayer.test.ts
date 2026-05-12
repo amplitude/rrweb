@@ -5,6 +5,10 @@ import * as path from 'path';
 import type * as puppeteer from 'puppeteer';
 import { vi } from 'vitest';
 import adoptedStyleSheet from './events/adopted-style-sheet';
+import adoptedStyleSheetInSnapshot from './events/adopted-style-sheet-in-snapshot';
+import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shared-in-snapshot';
+import adoptedStyleSheetSharedWithIncrementals from './events/adopted-style-sheet-shared-with-incrementals';
+import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
@@ -1045,6 +1049,225 @@ describe('replayer', function () {
 
     await page.evaluate('replayer.pause(630);');
     await check600ms();
+  });
+
+  it('can replay adoptedStyleSheets embedded inline in the full snapshot', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    const checkCorrectness = async () => {
+      // Shadow root's adoptedStyleSheet (styleId 1) serialized inline in snapshot
+      expect(
+        await contentDocument!.evaluate(
+          () =>
+            window.getComputedStyle(
+              document
+                .querySelector('#shadow-host')!
+                .shadowRoot!.querySelector('span')!,
+            ).color,
+        ),
+      ).toEqual('rgb(255, 0, 0)');
+
+      // Document-level adoptedStyleSheet (styleId 2) serialized inline in snapshot
+      expect(
+        await contentDocument!.evaluate(
+          () => window.getComputedStyle(document.body).backgroundColor,
+        ),
+      ).toEqual('rgb(0, 128, 0)');
+    };
+    await checkCorrectness();
+
+    // Verify correctness also holds in fast-forward mode
+    await page.evaluate('replayer.play(0);');
+    await waitForRAF(page);
+    await page.evaluate('replayer.pause(300);');
+    await checkCorrectness();
+  });
+
+  it('reuses the same CSSStyleSheet object when two shadow hosts share a styleId', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetSharedInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // Both shadow roots should have the rule applied (span is red)
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-1')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-2')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // The replayer must reuse the same CSSStyleSheet object for both hosts
+    // (de-dup path: second host has rules: [] and looks up the sheet by styleId)
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          document.querySelector('#shadow-host-1')!.shadowRoot!
+            .adoptedStyleSheets[0] ===
+          document.querySelector('#shadow-host-2')!.shadowRoot!
+            .adoptedStyleSheets[0],
+      ),
+    ).toBe(true);
+  });
+
+  it('applies rules to shared sheet even when inner host afterAppend fires before outer (post-order)', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetNestedSharedInSnapshot)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // #inner-host lives inside #outer-host's shadow root — must traverse to reach it
+    // Outer shadow root span must be red
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            (
+              document.querySelector('#outer-host') as HTMLElement
+            ).shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // Inner shadow root span must also be red (post-order fix: rules back-filled)
+    expect(
+      await contentDocument!.evaluate(() => {
+        const innerHost = (
+          document.querySelector('#outer-host') as HTMLElement
+        ).shadowRoot!.querySelector('#inner-host') as HTMLElement;
+        return window.getComputedStyle(
+          innerHost.shadowRoot!.querySelector('span')!,
+        ).color;
+      }),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // Outer and inner shadow roots must share the same CSSStyleSheet object
+    expect(
+      await contentDocument!.evaluate(() => {
+        const outerRoot = (document.querySelector('#outer-host') as HTMLElement)
+          .shadowRoot!;
+        const innerHost = outerRoot.querySelector('#inner-host') as HTMLElement;
+        return (
+          outerRoot.adoptedStyleSheets[0] ===
+          innerHost.shadowRoot!.adoptedStyleSheets[0]
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it('preserves shadow-DOM adoptedStyleSheets across a seek-cache restore', async () => {
+    // Regression: the seek cache used to omit onAdoptedStyleSheet when
+    // serializing the cached snapshot, so restoring from a checkpoint dropped
+    // every shadow host's adoptedStyleSheets and styling vanished after a
+    // scrub. The cache-hit path is reached on a backward seek to a time at or
+    // after a previously captured checkpoint, so we warm the cache at 2000ms,
+    // jump forward to 3500ms, then seek back to 2500ms — that final seek
+    // restores from the 2000ms cache entry rather than replaying from the
+    // original FullSnapshot, exercising exactly the path the bug lived on.
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetSharedWithIncrementals)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, {
+        showDebug: true,
+        useSeekCache: true,
+      });
+      replayer.pause(2000);
+    `);
+    // Wait for captureSeekCacheEntry's 0-delay timer to fire and serialize.
+    await page.waitForTimeout(300);
+
+    await page.evaluate('replayer.pause(3500);');
+    await page.waitForTimeout(300);
+
+    // Backward seek — applyEventsSynchronously consults seekCache and the
+    // 2000ms entry wins (latest entry ≤ 2500ms target).
+    await page.evaluate('replayer.pause(2500);');
+    await page.waitForTimeout(300);
+
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    // Both shadow hosts must have non-empty adoptedStyleSheets after restore.
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          document.querySelector('#shadow-host-1')!.shadowRoot!
+            .adoptedStyleSheets.length,
+      ),
+    ).toBe(1);
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          document.querySelector('#shadow-host-2')!.shadowRoot!
+            .adoptedStyleSheets.length,
+      ),
+    ).toBe(1);
+
+    // Computed styling must come through on both spans.
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-1')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          window.getComputedStyle(
+            document
+              .querySelector('#shadow-host-2')!
+              .shadowRoot!.querySelector('span')!,
+          ).color,
+      ),
+    ).toEqual('rgb(255, 0, 0)');
+
+    // Sheet must still be shared between hosts after restore.
+    expect(
+      await contentDocument!.evaluate(
+        () =>
+          document.querySelector('#shadow-host-1')!.shadowRoot!
+            .adoptedStyleSheets[0] ===
+          document.querySelector('#shadow-host-2')!.shadowRoot!
+            .adoptedStyleSheets[0],
+      ),
+    ).toBe(true);
   });
 
   it('should replay document replacement events without warnings or errors', async () => {

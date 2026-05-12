@@ -686,6 +686,50 @@ describe('record', function (this: ISuite) {
     await assertSnapshot(ctx.events);
   });
 
+  it('does not inline adoptedStyleSheets when captureAdoptedStyleSheets is false', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        const host = document.createElement('div');
+        host.id = 'adopted-host';
+        document.body.appendChild(host);
+        host.attachShadow({ mode: 'open' });
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync!('span { color: red; }');
+        host.shadowRoot!.adoptedStyleSheets = [sheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: false });
+        setTimeout(resolve, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+
+    // Full snapshot must NOT carry adoptedStyleSheets inline on the shadow host
+    const fullSnapshot = ctx.events.find(
+      (e) => e.type === EventType.FullSnapshot,
+    ) as eventWithTime & { data: { node: any } };
+    const findNode = (node: any): any => {
+      if (node?.attributes?.id === 'adopted-host') return node;
+      for (const child of node?.childNodes || []) {
+        const found = findNode(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    expect(
+      findNode(fullSnapshot!.data.node)?.adoptedStyleSheets,
+    ).toBeUndefined();
+
+    // An incremental AdoptedStyleSheet event with CSS rules must be emitted instead
+    const hasIncrementalWithRules = ctx.events.some(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as any).source === IncrementalSource.AdoptedStyleSheet &&
+        ((e.data as any).styles ?? []).length > 0,
+    );
+    expect(hasIncrementalWithRules).toBe(true);
+  });
+
   it('captures stylesheets in iframes with `blob:` url', async () => {
     await ctx.page.evaluate(() => {
       const iframe = document.createElement('iframe');

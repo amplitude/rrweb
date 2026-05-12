@@ -65,13 +65,20 @@ export class StylesheetManager {
       let styleId;
       if (!this.styleMirror.has(sheet)) {
         styleId = this.styleMirror.add(sheet);
-        styles.push({
-          styleId,
-          rules: Array.from(sheet.rules || CSSRule, (r, index) => ({
+        let rules: { rule: string; index: number }[] = [];
+        try {
+          rules = Array.from(sheet.cssRules, (r, index) => ({
             rule: stringifyRule(r, sheet.href),
             index,
-          })),
-        });
+          }));
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'SecurityError') {
+            // Cross-origin stylesheet: cssRules is intentionally blocked.
+          } else {
+            throw e;
+          }
+        }
+        styles.push({ styleId, rules });
       } else styleId = this.styleMirror.getId(sheet);
       adoptedStyleSheetData.styleIds.push(styleId);
     }
