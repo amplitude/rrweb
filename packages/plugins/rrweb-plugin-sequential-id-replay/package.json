@@ -45,6 +45,7 @@
   "devDependencies": {
     "@amplitude/rrweb": "workspace:^",
     "@amplitude/rrweb-plugin-sequential-id-record": "workspace:^",
+    "@amplitude/rrweb-types": "workspace:^",
     "typescript": "^5.4.5",
     "vite": "^6",
     "vite-plugin-dts": "^3.9.1"

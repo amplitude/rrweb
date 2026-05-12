@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@amplitude/rrweb": "workspace:^",
+    "@amplitude/rrweb-types": "workspace:^",
     "@types/fs-extra": "11.0.1",
     "@types/jest": "^27.4.1",
     "@types/minimist": "^1.2.1",
