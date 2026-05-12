@@ -43,13 +43,13 @@ Results land in `test/benchmark/results/<fixture-name>.json`.
 
 ## Metrics captured (`recording-metrics.test.ts`)
 
-| Metric               | Description                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `workloadDurationMs` | Wall-clock time for the entire fixture workload                                           |
-| `msPerK`             | `workloadDurationMs / (mutationEvents / 1000)` — main-thread cost per 1 k mutation events |
-| `peakHeapBytes`      | Peak `performance.memory.usedJSHeapSize` (Chrome only; 0 elsewhere)                       |
+| Metric                       | Description                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `workloadDurationMs`         | Wall-clock time for the entire fixture workload                                                                          |
+| `msPerK`                     | `workloadDurationMs / (mutationEvents / 1000)` — main-thread cost per 1 k mutation events                                |
+| `peakHeapBytes`              | Peak `performance.memory.usedJSHeapSize` (Chrome only; 0 elsewhere)                                                      |
 | `emitCallbackOverhead.p50Ms` | Median time spent inside the harness `emit` callback (measures callback overhead, not rrweb-internal serialization cost) |
-| `emitCallbackOverhead.p99Ms` | 99th-percentile harness callback overhead (highlights worst-case spikes)                 |
+| `emitCallbackOverhead.p99Ms` | 99th-percentile harness callback overhead (highlights worst-case spikes)                                                 |
 
 ---
 
