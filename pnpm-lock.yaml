@@ -79,6 +79,12 @@ importers:
       typescript:
         specifier: 5.4.5
         version: 5.4.5
+      vite:
+        specifier: ^6
+        version: 6.4.1(@types/node@20.14.2)(yaml@2.8.4)
+      vite-plugin-dts:
+        specifier: ^3.9.1
+        version: 3.9.1(@types/node@20.14.2)(rollup@4.55.1)(typescript@5.4.5)(vite@6.4.1(@types/node@20.14.2)(yaml@2.8.4))
 
   packages/all:
     dependencies:
@@ -157,6 +163,9 @@ importers:
       '@amplitude/rrweb':
         specifier: workspace:^
         version: link:../../rrweb
+      '@amplitude/rrweb-types':
+        specifier: workspace:^
+        version: link:../../types
       simple-peer-light:
         specifier: ^9.10.0
         version: 9.10.0

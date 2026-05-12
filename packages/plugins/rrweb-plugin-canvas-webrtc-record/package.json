@@ -44,6 +44,7 @@
   "homepage": "https://github.com/rrweb-io/rrweb#readme",
   "devDependencies": {
     "@amplitude/rrweb": "workspace:^",
+    "@amplitude/rrweb-types": "workspace:^",
     "simple-peer-light": "^9.10.0",
     "typescript": "^5.4.5",
     "vite": "^6",

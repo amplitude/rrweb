@@ -37,7 +37,9 @@
     "conventional-changelog-conventionalcommits": "^8.0.0",
     "lerna": "^8.1.9",
     "turbo": "^2.0.4",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vite": "^6",
+    "vite-plugin-dts": "^3.9.1"
   },
   "scripts": {
     "build:all": "NODE_OPTIONS='--max-old-space-size=4096' turbo run prepublish",
