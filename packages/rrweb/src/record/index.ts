@@ -161,8 +161,8 @@ export function record<T = eventWithTime>(
           password: true,
         }
       : _maskInputOptions !== undefined
-      ? _maskInputOptions
-      : { password: true };
+        ? _maskInputOptions
+        : { password: true };
 
   const slimDOMOptions: SlimDOMOptions =
     _slimDOMOptions === true || _slimDOMOptions === 'all'
@@ -182,8 +182,8 @@ export function record<T = eventWithTime>(
           headTitleMutations: _slimDOMOptions === 'all',
         }
       : _slimDOMOptions
-      ? _slimDOMOptions
-      : {};
+        ? _slimDOMOptions
+        : {};
 
   polyfill();
 
@@ -494,7 +494,8 @@ export function record<T = eventWithTime>(
             throw e;
           }
         }
-        orphanStyles.push({ styleId, rules });
+        const postResetId = stylesheetManager.styleMirror.add(sheet);
+        orphanStyles.push({ styleId: postResetId, rules });
       }
 
       if (orphanStyles.length > 0) {
