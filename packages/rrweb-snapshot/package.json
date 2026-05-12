@@ -3,8 +3,6 @@
   "version": "2.1.0",
   "description": "rrweb's component to take a snapshot of DOM, aka DOM serializer",
   "scripts": {
-    "prepare": "npm run prepack",
-    "prepack": "npm run build",
     "retest": "vitest run",
     "test": "pnpm build && vitest run",
     "test:watch": "vitest watch",
