@@ -161,8 +161,8 @@ export function record<T = eventWithTime>(
           password: true,
         }
       : _maskInputOptions !== undefined
-        ? _maskInputOptions
-        : { password: true };
+      ? _maskInputOptions
+      : { password: true };
 
   const slimDOMOptions: SlimDOMOptions =
     _slimDOMOptions === true || _slimDOMOptions === 'all'
@@ -182,8 +182,8 @@ export function record<T = eventWithTime>(
           headTitleMutations: _slimDOMOptions === 'all',
         }
       : _slimDOMOptions
-        ? _slimDOMOptions
-        : {};
+      ? _slimDOMOptions
+      : {};
 
   polyfill();
 
