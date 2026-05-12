@@ -42,6 +42,7 @@
     "vite-plugin-dts": "^3.9.1"
   },
   "scripts": {
+    "postinstall": "pnpm --recursive rebuild puppeteer",
     "build:all": "NODE_OPTIONS='--max-old-space-size=4096' turbo run prepublish",
     "references:update": "workspaces-to-typescript-project-references",
     "test": "turbo run test --concurrency=1 --continue",

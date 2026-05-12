@@ -14,10 +14,8 @@ minimumReleaseAgeExclude:
 
 # Allowlist of dependencies permitted to run install scripts. Adding to this
 # list grants arbitrary-code-execution rights to the package during install,
-# so each entry must be vetted.
+# so each entry must be vetted. pnpm 10 ignores install/postinstall for all
+# packages not on this list.
 onlyBuiltDependencies:
   - esbuild
   - puppeteer
-
-# Refuse to execute lifecycle scripts from any package not on the allowlist above.
-trustPolicy: true
