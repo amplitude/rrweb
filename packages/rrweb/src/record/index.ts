@@ -1,5 +1,6 @@
 import {
   snapshot,
+  stringifyRule,
   type MaskInputOptions,
   type SlimDOMOptions,
   createMirror,
@@ -373,6 +374,17 @@ export function record<T = eventWithTime>(
       isCheckout,
     );
 
+    // Capture any sheets that were registered in the previous recording window
+    // (i.e. sheets whose hosting element has since been removed from the DOM).
+    // These "orphaned" sheets will be absent from the FS body because the
+    // snapshot walk only visits currently-attached hosts.  We re-emit their
+    // rules in a synthetic AdoptedStyleSheet event right after the FS so the
+    // replayer's styleMirror stays complete across FullSnapshot checkouts.
+    const preResetEntries: Array<[number, CSSStyleSheet]> =
+      captureAdoptedStyleSheets
+        ? Array.from(stylesheetManager.styleMirror.getEntries())
+        : [];
+
     // When we take a full snapshot, old tracked StyleSheets need to be removed.
     stylesheetManager.reset();
 
@@ -437,6 +449,62 @@ export function record<T = eventWithTime>(
       isCheckout,
     );
     mutationBuffers.forEach((buf) => buf.unlock()); // generate & emit any mutations that happened during snapshotting, as can now apply against the newly built mirror
+
+    // Re-emit rules for any sheets that existed before this FS but whose
+    // adopting host is no longer in the DOM (so they weren't inlined in the
+    // FS body).  Without this, the replayer's styleMirror loses those entries
+    // after the FS rebuild and any later source-15 events referencing the
+    // styleId will silently fail.
+    //
+    // We use the root document's serialized id as the event target, with
+    // styleIds: [] so the replayer creates/updates the mirror entries without
+    // actually changing the document's adoptedStyleSheets.  If the document
+    // also has real adopted sheets, the subsequent adoptStyleSheets() call
+    // below will overwrite adoptedStyleSheets with the correct set.
+    if (captureAdoptedStyleSheets && preResetEntries.length > 0) {
+      // After snapshot() the styleMirror contains exactly the sheets that were
+      // inlined into the FS.  Any sheet object NOT present there was orphaned.
+      // We compare by CSSStyleSheet object identity (not by id) because
+      // stylesheetManager.reset() resets the id counter to 1, so post-reset
+      // ids live in a different namespace from pre-reset ids.  Comparing ids
+      // would silently drop orphans whose old id collides with a newly-assigned
+      // id, and would spuriously emit active sheets whose old id is > the new
+      // count.
+      const snapshotSheets = new Set<CSSStyleSheet>();
+      for (const [, sheet] of stylesheetManager.styleMirror.getEntries()) {
+        snapshotSheets.add(sheet);
+      }
+
+      const orphanStyles: {
+        styleId: number;
+        rules: { rule: string; index: number }[];
+      }[] = [];
+      for (const [styleId, sheet] of preResetEntries) {
+        if (snapshotSheets.has(sheet)) continue; // already inlined in FS
+        let rules: { rule: string; index: number }[] = [];
+        try {
+          rules = Array.from(sheet.cssRules, (r, index) => ({
+            rule: stringifyRule(r, sheet.href),
+            index,
+          }));
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'SecurityError') {
+            // Cross-origin stylesheet: cssRules blocked, emit empty rules.
+          } else {
+            throw e;
+          }
+        }
+        orphanStyles.push({ styleId, rules });
+      }
+
+      if (orphanStyles.length > 0) {
+        wrappedAdoptedStyleSheetEmit({
+          id: mirror.getId(document),
+          styleIds: [],
+          styles: orphanStyles,
+        });
+      }
+    }
 
     // Some old browsers don't support adoptedStyleSheets.
     if (document.adoptedStyleSheets && document.adoptedStyleSheets.length > 0)
