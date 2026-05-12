@@ -34,7 +34,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Topologically sorted list of non-private workspace packages.
-packages_json="$(yarn -s lerna list --json --toposort --no-private)"
+packages_json="$(pnpm exec lerna list --json --toposort --no-private)"
 
 echo "$packages_json" | jq -c '.[]' | while IFS= read -r entry; do
   name="$(echo "$entry" | jq -r '.name')"
