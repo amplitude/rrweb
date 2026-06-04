@@ -198,6 +198,27 @@ export type playerConfig = {
   triggerFocus: boolean;
   UNSAFE_replayCanvas: boolean;
   pauseAnimation?: boolean;
+  /**
+   * When `true`, the replayer injects a stylesheet into the replay iframe (and
+   * any shadow roots) that disables CSS transitions:
+   *
+   * ```css
+   * *, *::before, *::after {
+   *   transition-duration: 0s !important;
+   *   transition-delay: 0s !important;
+   * }
+   * ```
+   *
+   * This suppresses crossfade/transition artifacts that occur when a page
+   * animates between sibling elements via per-frame inline `style`
+   * (e.g. two `position: absolute; width: 100%` nodes whose `opacity`/
+   * `transform` is updated across several incremental mutations). Without this,
+   * replay can show both nodes mid-transition stacked on top of one another.
+   *
+   * Mirrors the transition half of the capture-side `freezeAnimations()` CSS.
+   * Opt-in; default `false` so existing replay behavior is unchanged.
+   */
+  freezeTransitions?: boolean;
   mouseTail:
     | boolean
     | {

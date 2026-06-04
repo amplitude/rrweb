@@ -102,6 +102,13 @@ const REPLAY_CONSOLE_PREFIX = '[replayer]';
 
 const INJECTED_STYLE_ID = '__rrweb-injected-style__';
 
+// Disables CSS transitions in the replay iframe when `freezeTransitions` is
+// enabled. Mirrors the transition half of the capture-side `freezeAnimations()`
+// CSS (see packages/capture/src/dom-utils.ts). Suppresses crossfade artifacts
+// from per-frame inline-style opacity/transform animations during replay.
+const FREEZE_TRANSITIONS_CSS =
+  '*, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; }';
+
 const defaultMouseTailConfig = {
   duration: 500,
   lineCap: 'round',
@@ -216,6 +223,7 @@ export class Replayer {
       triggerFocus: true,
       UNSAFE_replayCanvas: false,
       pauseAnimation: true,
+      freezeTransitions: false,
       mouseTail: defaultMouseTailConfig,
       useVirtualDom: true, // Virtual-dom optimization is enabled by default.
       useSeekCache: false, // Opt-in until production-validated; flip to true once confidence is high.
@@ -1107,6 +1115,9 @@ export class Replayer {
         'html.rrweb-paused *, html.rrweb-paused *:before, html.rrweb-paused *:after { animation-play-state: paused !important; }',
       );
     }
+    if (this.config.freezeTransitions) {
+      injectStylesRules.push(FREEZE_TRANSITIONS_CSS);
+    }
     if (!injectStylesRules.length) {
       return;
     }
@@ -1144,6 +1155,9 @@ export class Replayer {
     const injectStylesRules = getInjectStyleRules(
       this.config.blockClass,
     ).concat(this.config.insertStyleRules);
+    if (this.config.freezeTransitions) {
+      injectStylesRules.push(FREEZE_TRANSITIONS_CSS);
+    }
 
     if (!injectStylesRules.length) return;
 
