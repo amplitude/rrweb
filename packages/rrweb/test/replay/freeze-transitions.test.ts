@@ -59,7 +59,13 @@ function makeEvents(): eventWithTime[] {
               tagName: 'html',
               attributes: {},
               childNodes: [
-                { type: 2, tagName: 'head', attributes: {}, childNodes: [], id: 3 },
+                {
+                  type: 2,
+                  tagName: 'head',
+                  attributes: {},
+                  childNodes: [],
+                  id: 3,
+                },
                 {
                   type: 2,
                   tagName: 'body',
@@ -94,7 +100,9 @@ function makeEvents(): eventWithTime[] {
           {
             id: SLIDE_A_ID,
             attributes: {
-              style: `position: absolute; width: 100%; opacity: ${1 - t}; transition: opacity 0.3s ease;`,
+              style: `position: absolute; width: 100%; opacity: ${
+                1 - t
+              }; transition: opacity 0.3s ease;`,
             },
           },
           {
