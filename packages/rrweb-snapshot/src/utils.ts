@@ -63,6 +63,74 @@ function fixBrowserCompatibilityIssuesInCSS(cssText: string): string {
   return cssText;
 }
 
+/**
+ * Some browsers (notably Chrome) serialize the `grid` / `grid-template`
+ * shorthand lossily in `CSSStyleRule.cssText`: when a multi-row
+ * `grid-template-areas` value is combined with named grid lines/areas, the
+ * serialized text can collapse to a single-row template (or drop the named
+ * areas entirely). Children pinned to those areas via `grid-row-start` /
+ * `grid-column-start` then fall back onto one implicit cell and overlap on
+ * replay (root cause of SR-4667 — GoFundMe mobile text overlap).
+ *
+ * The CSSOM longhands (`grid-template-areas` / `-rows` / `-columns`) remain
+ * intact on `rule.style` even when `cssText` is lossy, so when the serialized
+ * rule has lost the full areas value we re-emit those longhands read straight
+ * from the CSSOM. Guarded to only act when `grid-template-areas` is present and
+ * actually missing from the serialized text, so it is a no-op for the
+ * overwhelming majority of rules and for engines (jsdom/happy-dom) that
+ * round-trip grid faithfully.
+ * @param rule - the `CSSStyleRule` being serialized
+ * @param cssText - the (possibly lossy) `rule.cssText` output
+ * @returns `cssText` with grid-template longhands restored when needed
+ */
+export function fixGridTemplateSerialization(
+  rule: CSSStyleRule,
+  cssText: string,
+): string {
+  let style: CSSStyleDeclaration | undefined;
+  try {
+    style = rule.style;
+  } catch (error) {
+    return cssText;
+  }
+  if (!style || typeof style.getPropertyValue !== 'function') {
+    return cssText;
+  }
+
+  const areas = style.getPropertyValue('grid-template-areas');
+  // Only multi-area grid templates are at risk of lossy serialization;
+  // `none`/empty means there is nothing to recover.
+  if (!areas || areas === 'none') {
+    return cssText;
+  }
+
+  // If the serialized rule already contains the full areas value, nothing was
+  // lost (e.g. the author used the longhand, or the engine round-trips it).
+  if (normalizeCssString(cssText).includes(normalizeCssString(areas))) {
+    return cssText;
+  }
+
+  const declarations = [`grid-template-areas: ${areas};`];
+  const rows = style.getPropertyValue('grid-template-rows');
+  if (rows) {
+    declarations.push(`grid-template-rows: ${rows};`);
+  }
+  const columns = style.getPropertyValue('grid-template-columns');
+  if (columns) {
+    declarations.push(`grid-template-columns: ${columns};`);
+  }
+
+  // Inject the recovered longhands just before the rule's closing brace.
+  const closingBraceIndex = cssText.lastIndexOf('}');
+  if (closingBraceIndex === -1) {
+    return cssText;
+  }
+  const head = cssText.slice(0, closingBraceIndex).replace(/\s*$/, '');
+  const needsSemicolon =
+    head.length > 0 && !head.endsWith('{') && !head.endsWith(';');
+  return `${head}${needsSemicolon ? ';' : ''} ${declarations.join(' ')} }`;
+}
+
 // Remove this declaration once typescript has added `CSSImportRule.supportsText` to the lib.
 declare interface CSSImportRule extends CSSRule {
   readonly href: string;
@@ -151,10 +219,15 @@ export function stringifyRule(rule: CSSRule, sheetHref: string | null): string {
     return importStringified;
   } else {
     let ruleStringified = rule.cssText;
-    if (isCSSStyleRule(rule) && rule.selectorText.includes(':')) {
-      // Safari does not escape selectors with : properly
-      // see https://bugs.webkit.org/show_bug.cgi?id=184604
-      ruleStringified = fixSafariColons(ruleStringified);
+    if (isCSSStyleRule(rule)) {
+      if (rule.selectorText.includes(':')) {
+        // Safari does not escape selectors with : properly
+        // see https://bugs.webkit.org/show_bug.cgi?id=184604
+        ruleStringified = fixSafariColons(ruleStringified);
+      }
+      // Recover grid-template longhands dropped by lossy shorthand
+      // serialization (SR-4667).
+      ruleStringified = fixGridTemplateSerialization(rule, ruleStringified);
     }
     if (sheetHref) {
       return absolutifyURLs(ruleStringified, sheetHref);
