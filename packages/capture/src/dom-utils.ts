@@ -18,15 +18,15 @@ export type PageDimensions = {
  * it only queries `querySelectorAll('*')` and `getComputedStyle` once per
  * element.
  *
- * @param excludeEl - An optional element to skip during the scan (e.g. an
- *                    injected host element that should not influence measurements).
  * @param targetDocument - The document to measure. Defaults to the global
  *                    `document`. Pass an iframe's `contentDocument` to measure
  *                    a page rendered inside a device frame.
+ * @param excludeEl - An optional element to skip during the scan (e.g. an
+ *                    injected host element that should not influence measurements).
  */
 export function getFullPageDimensions(
-  excludeEl?: HTMLElement | null,
   targetDocument: Document = document,
+  excludeEl?: HTMLElement | null,
 ): PageDimensions {
   const doc = targetDocument.documentElement;
   const body = targetDocument.body;
@@ -83,10 +83,10 @@ export function getFullPageDimensions(
  */
 export function getFullPageDimension(
   axis: 'height' | 'width',
-  excludeEl?: HTMLElement | null,
   targetDocument: Document = document,
+  excludeEl?: HTMLElement | null,
 ): number {
-  const dims = getFullPageDimensions(excludeEl, targetDocument);
+  const dims = getFullPageDimensions(targetDocument, excludeEl);
   return axis === 'height' ? dims.pageHeight : dims.pageWidth;
 }
 

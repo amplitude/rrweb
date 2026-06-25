@@ -91,7 +91,7 @@ export function captureFullSnapshot(
         }
       : null;
 
-    const { pageHeight, pageWidth } = getFullPageDimensions(excludeEl, doc);
+    const { pageHeight, pageWidth } = getFullPageDimensions(doc, excludeEl);
 
     return {
       fullSnapshotEvent,
