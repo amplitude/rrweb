@@ -30,7 +30,6 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_DOWNLOAD_BASE_URL: 'https://storage.googleapis.com/chrome-for-testing-public'
-          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev/dbazure/download/playwright
 
       - name: Build Project
         run: NODE_OPTIONS='--max-old-space-size=4096' pnpm build:all

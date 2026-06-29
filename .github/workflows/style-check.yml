@@ -26,7 +26,9 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev/dbazure/download/playwright
+          # Lint/format jobs never launch a browser; skip rrvideo's
+          # `playwright install` download (hangs post-transfer on 1.44.1).
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Build Packages
         run: NODE_OPTIONS='--max-old-space-size=4096' pnpm build:all
       - name: Eslint Check
@@ -61,7 +63,9 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev/dbazure/download/playwright
+          # Lint/format jobs never launch a browser; skip rrvideo's
+          # `playwright install` download (hangs post-transfer on 1.44.1).
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Prettier Check
         run: pnpm exec prettier --check '**/*.{ts,md}'
 
@@ -87,7 +91,9 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev/dbazure/download/playwright
+          # Lint/format jobs never launch a browser; skip rrvideo's
+          # `playwright install` download (hangs post-transfer on 1.44.1).
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Prettify Code
         run: pnpm exec prettier --write '**/*.{ts,md}'
       - name: Commit Changes

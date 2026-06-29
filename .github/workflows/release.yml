@@ -94,10 +94,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-          # Playwright 1.44.1 defaults to the retired playwright.azureedge.net
-          # CDN, which hangs/stalls on download. Point at the current Microsoft
-          # CDN, which serves the same /builds/<browser>/<rev>/... layout.
-          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev/dbazure/download/playwright
+          # This job only builds and publishes — it never launches a browser.
+          # rrvideo's `install` lifecycle runs `playwright install`, whose
+          # download hangs post-transfer on Playwright 1.44.1. Skip it here.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Build packages
         run: pnpm build:all
