@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.3 (2026-07-01)</small>
+
+**Note:** Version bump only for package @amplitude/rrvideo
+
 ## <small>2.1.2 (2026-06-30)</small>
 
 - chore: fix playwright download url (#129) ([faeafe1](https://github.com/amplitude/rrweb/commit/faeafe1)), closes [#129](https://github.com/amplitude/rrweb/issues/129)

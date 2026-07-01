@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.3 (2026-07-01)</small>
+
+- fix(replay): reset styleMirror per FullSnapshot to match recorder scoping (#132) ([59e31aa](https://github.com/amplitude/rrweb/commit/59e31aa)), closes [#132](https://github.com/amplitude/rrweb/issues/132)
+
 ## <small>2.1.2 (2026-06-30)</small>
 
 - fix: resolve browser cicd issues (#131) ([546e481](https://github.com/amplitude/rrweb/commit/546e481)), closes [#131](https://github.com/amplitude/rrweb/issues/131)

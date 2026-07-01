@@ -1,6 +1,6 @@
 {
   "name": "@amplitude/rrweb",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "record and replay the web",
   "scripts": {
     "retest": "cross-env PUPPETEER_HEADLESS=true pnpm retest:headful",
