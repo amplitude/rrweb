@@ -132,6 +132,7 @@ export type observerParam = {
   shadowDomManager: ShadowDomManager;
   canvasManager: CanvasManager;
   processedNodeManager: ProcessedNodeManager;
+  captureAdoptedStyleSheets: boolean;
   ignoreCSSAttributes: Set<string>;
   plugins: Array<{
     observer: (
@@ -168,6 +169,7 @@ export type MutationBufferParam = Pick<
   | 'shadowDomManager'
   | 'canvasManager'
   | 'processedNodeManager'
+  | 'captureAdoptedStyleSheets'
 >;
 
 export type ReplayPlugin = {

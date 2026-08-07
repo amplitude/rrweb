@@ -353,6 +353,7 @@ export function record<T = eventWithTime>(
       canvasManager,
       keepIframeSrcFn,
       processedNodeManager,
+      captureAdoptedStyleSheets,
     },
     mirror,
   });
@@ -563,6 +564,7 @@ export function record<T = eventWithTime>(
           stylesheetManager,
           shadowDomManager,
           processedNodeManager,
+          captureAdoptedStyleSheets,
           canvasManager,
           ignoreCSSAttributes,
           plugins:
