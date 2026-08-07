@@ -1868,6 +1868,7 @@ export class Replayer {
         if (this.usingVirtualDom) return;
         applyDialogToTopLevel(node);
         if (
+          'adoptedStyleSheets' in mutation.node &&
           mutation.node.adoptedStyleSheets?.length &&
           (hasShadowRoot(node) || mutation.node.type === NodeType.Document)
         ) {
