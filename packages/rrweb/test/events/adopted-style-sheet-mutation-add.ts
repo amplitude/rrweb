@@ -65,16 +65,7 @@ const events: eventWithTime[] = [
             type: 2,
             tagName: 'dsf-icon',
             attributes: { id: 'dynamic-icon' },
-            childNodes: [
-              {
-                type: 2,
-                tagName: 'svg',
-                attributes: { viewBox: '0 0 24 24' },
-                childNodes: [],
-                id: 8,
-                isShadow: true,
-              },
-            ],
+            childNodes: [],
             id: 7,
             isShadowHost: true,
             adoptedStyleSheets: [
@@ -88,6 +79,19 @@ const events: eventWithTime[] = [
                 ],
               },
             ],
+          },
+        },
+        {
+          parentId: 7,
+          nextId: null,
+          node: {
+            type: 2,
+            tagName: 'svg',
+            attributes: { viewBox: '0 0 24 24' },
+            childNodes: [],
+            id: 8,
+            isSVG: true,
+            isShadow: true,
           },
         },
       ],
