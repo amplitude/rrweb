@@ -78,7 +78,6 @@ export class ShadowDomManager {
     // before the full snapshot is created or attachShadow action is recorded.
     setTimeout(() => {
       if (
-        !this.bypassOptions.captureAdoptedStyleSheets &&
         shadowRoot.adoptedStyleSheets &&
         shadowRoot.adoptedStyleSheets.length > 0
       )
