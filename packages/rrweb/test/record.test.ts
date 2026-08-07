@@ -686,6 +686,50 @@ describe('record', function (this: ISuite) {
     await assertSnapshot(ctx.events);
   });
 
+  it('inlines adoptedStyleSheets on dynamically added shadow hosts (SR-4938)', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          const host = document.createElement('div');
+          host.id = 'dynamic-icon';
+          document.body.appendChild(host);
+          host.attachShadow({ mode: 'open' });
+          const sheet = new CSSStyleSheet();
+          sheet.replaceSync!('svg { width: 24px; height: 24px; }');
+          host.shadowRoot!.adoptedStyleSheets = [sheet];
+          const svg = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg',
+          );
+          svg.setAttribute('viewBox', '0 0 24 24');
+          host.shadowRoot!.appendChild(svg);
+          resolve(undefined);
+        }, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: { adds?: Array<{ node?: { adoptedStyleSheets?: unknown[] } }> };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]).toMatchObject({
+      rules: [{ rule: 'svg { width: 24px; height: 24px; }', index: 0 }],
+    });
+  });
+
   it('does not inline adoptedStyleSheets when captureAdoptedStyleSheets is false', async () => {
     await ctx.page.evaluate(() => {
       return new Promise((resolve) => {

@@ -10,6 +10,7 @@ import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shar
 import adoptedStyleSheetSharedWithIncrementals from './events/adopted-style-sheet-shared-with-incrementals';
 import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
+import adoptedStyleSheetMutationAdd from './events/adopted-style-sheet-mutation-add';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
 import iframeEvents from './events/iframe';
@@ -1093,6 +1094,35 @@ describe('replayer', function () {
     await waitForRAF(page);
     await page.evaluate('replayer.pause(300);');
     await checkCorrectness();
+  });
+
+  it('can replay adoptedStyleSheets embedded inline on a mutation add (SR-4938)', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetMutationAdd)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    expect(
+      await contentDocument!.evaluate(() => {
+        const host = document.querySelector('#dynamic-icon') as HTMLElement;
+        const svg = host?.shadowRoot?.querySelector('svg') as SVGElement;
+        if (!host || !svg) return null;
+        return {
+          hostWidth: host.getBoundingClientRect().width,
+          svgWidth: svg.getBoundingClientRect().width,
+          sheetCount: host.shadowRoot!.adoptedStyleSheets.length,
+        };
+      }),
+    ).toEqual({
+      hostWidth: 24,
+      svgWidth: 24,
+      sheetCount: 1,
+    });
   });
 
   it('reuses the same CSSStyleSheet object when two shadow hosts share a styleId', async () => {
