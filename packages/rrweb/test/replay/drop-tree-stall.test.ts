@@ -6,11 +6,7 @@
  * because the sibling's parent was never found.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import {
-  EventType,
-  IncrementalSource,
-  NodeType,
-} from '@amplitude/rrweb-types';
+import { EventType, IncrementalSource, NodeType } from '@amplitude/rrweb-types';
 import type { eventWithTime } from '@amplitude/rrweb-types';
 import { Replayer } from '../../src/replay';
 
@@ -154,13 +150,9 @@ describe('replayer drop-tree resolve loop', () => {
     expect(warn).toHaveBeenCalled();
     const messages = warn.mock.calls.map((args) => String(args[1] ?? args[0]));
     expect(
-      messages.some((msg) =>
-        msg.includes('Stopped resolving mutation queue'),
-      ),
+      messages.some((msg) => msg.includes('Stopped resolving mutation queue')),
     ).toBe(true);
-    expect(
-      messages.some((msg) => msg.includes('Node with id')),
-    ).toBe(true);
+    expect(messages.some((msg) => msg.includes('Node with id'))).toBe(true);
   });
 
   it('still attaches well-formed adds', () => {

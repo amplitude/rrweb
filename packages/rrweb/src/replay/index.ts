@@ -2686,10 +2686,7 @@ export class Replayer {
      * is microtask, so events fired on a removed DOM may emit
      * snapshots in the reverse order.
      */
-    this.debug(
-      `Node with id '${id}' not found. `,
-      summarizeIncrementalData(d),
-    );
+    this.debug(`Node with id '${id}' not found. `, summarizeIncrementalData(d));
   }
 
   private warn(...args: Parameters<typeof console.warn>) {
