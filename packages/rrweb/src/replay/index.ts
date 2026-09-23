@@ -118,6 +118,25 @@ function indicatesTouchDevice(e: eventWithTime) {
   );
 }
 
+/**
+ * Index of the first event with a timestamp strictly greater than `timestamp`.
+ * Relies on `events` being sorted by timestamp, which the player machine
+ * maintains for both the initial list and out-of-order `addEvent` inserts.
+ */
+function firstEventIndexAfter(
+  events: eventWithTime[],
+  timestamp: number,
+): number {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (events[mid].timestamp <= timestamp) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 export class Replayer {
   public wrapper: HTMLDivElement;
   public iframe: HTMLIFrameElement;
@@ -141,6 +160,11 @@ export class Replayer {
   private emitter: Emitter = mitt();
 
   private nextUserInteractionEvent: eventWithTime | null;
+
+  // Set once the skipInactive lookahead has reached the end of the event list
+  // without finding a user interaction, so later events skip the scan. Cleared
+  // whenever the playhead moves or new events arrive.
+  private noFurtherUserInteraction = false;
 
   private legacy_missingNodeRetryMap: missingNodeMap = {};
 
@@ -598,6 +622,9 @@ export class Replayer {
    * stylesheet-load resume) to avoid spurious loading-indicator flicker.
    */
   private playInternal(timeOffset = 0) {
+    // The playhead may move backwards, which can bring user interactions back
+    // into view ahead of the new position.
+    this.noFurtherUserInteraction = false;
     if (this.service.state.matches('paused')) {
       this.service.send({ type: 'PLAY', payload: { timeOffset } });
     } else {
@@ -656,6 +683,9 @@ export class Replayer {
     if (indicatesTouchDevice(event)) {
       this.mouse.classList.add('touch-device');
     }
+    // A newly arrived event may be the user interaction a previous scan
+    // concluded did not exist.
+    this.noFurtherUserInteraction = false;
     void Promise.resolve().then(() =>
       this.service.send({ type: 'ADD_EVENT', payload: { event } }),
     );
@@ -879,12 +909,24 @@ export class Replayer {
             // do not check skip in sync
             return;
           }
-          if (this.config.skipInactive && !this.nextUserInteractionEvent) {
-            for (const _event of this.service.state.context.events) {
-              if (_event.timestamp <= event.timestamp) {
-                continue;
-              }
+          if (
+            this.config.skipInactive &&
+            !this.nextUserInteractionEvent &&
+            !this.noFurtherUserInteraction
+          ) {
+            const events = this.service.state.context.events;
+            let foundUserInteraction = false;
+            // Events are kept sorted by timestamp, so binary search to the
+            // first candidate instead of walking the already-played prefix on
+            // every single event (that made playback O(N^2) in event count).
+            for (
+              let i = firstEventIndexAfter(events, event.timestamp);
+              i < events.length;
+              i++
+            ) {
+              const _event = events[i];
               if (this.isUserInteraction(_event)) {
+                foundUserInteraction = true;
                 if (
                   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                   _event.delay! - event.delay! >
@@ -895,6 +937,11 @@ export class Replayer {
                 }
                 break;
               }
+            }
+            // Nothing left to skip to. Later events scan the same (shorter)
+            // tail, so remember this instead of rescanning it every event.
+            if (!foundUserInteraction) {
+              this.noFurtherUserInteraction = true;
             }
             if (this.nextUserInteractionEvent) {
               const skipTime =
