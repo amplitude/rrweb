@@ -586,6 +586,15 @@
               .slice(0, 20)
               .map((ms) => +ms.toFixed(1)),
           },
+          mutations: timings.map((timing) => ({
+            ...timing,
+            ms: +timing.ms.toFixed(3),
+            insertMs: +timing.insertMs.toFixed(3),
+            buildMs: +timing.buildMs.toFixed(3),
+            createMs: +timing.createMs.toFixed(3),
+            attributeMs: +timing.attributeMs.toFixed(3),
+            replayMs: +timing.replayMs.toFixed(1),
+          })),
           slowest: live
             .slice()
             .sort((a, b) => b.ms - a.ms)

@@ -110,6 +110,15 @@ The player patches `applyMutation` with `performance.mark` / `performance.measur
 
 The footer table breaks each mutation into total / insertion / build time plus live insert and fragment counts, and **Log summary** (or `window.__profileReport()`) prints run totals. Compare `insertMs` against `buildMs` before assuming insertion is the bottleneck, and use the insert counts to confirm the two arms really differ.
 
+**Download report JSON** includes:
+
+- every live and synchronous mutation with replay time and input counts
+- core phase timings: virtual DOM setup, removes, setup, mirror lookup, node build, insertion, missing-node resolution, fragment flush, `afterAppend`, texts, and attributes
+- queue counters: missing parent/next, missing root, resolved/dropped trees, and legacy missing nodes
+- the 20 slowest `buildNodeWithSN` calls per mutation (node id/type/tag, attribute count, text length)
+- aggregate DOM API timing and counts for node creation and attributes, plus tag/attribute histograms
+- FullSnapshot rebuild timing, warnings, long tasks, and worst animation-frame gaps
+
 Optional query flags: `skipInactive=1`, `layoutRead=1` (reads `offsetHeight` in `onBuild`), `t=24`, `speed=1`. If no path is passed, drop a JSON file in the UI, or put one at `packages/rrweb/temp/session.json`.
 
 ## Caveats
