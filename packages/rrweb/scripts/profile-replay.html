@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>rrweb live-mutation profile harness</title>
+    <link rel="stylesheet" href="/dist/style.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111318;
+        --panel: #1b1e27;
+        --line: #2c3140;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --accent: #8ab4f8;
+        --warn: #fdd663;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      body {
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        min-height: 100%;
+      }
+      header,
+      footer {
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        padding: 8px 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+      }
+      footer {
+        border-bottom: 0;
+        border-top: 1px solid var(--line);
+        max-height: 280px;
+        overflow: auto;
+      }
+      label,
+      .stat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      button,
+      select,
+      input[type='file'],
+      input[type='number'] {
+        background: #2a2f3a;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 8px;
+      }
+      button.primary {
+        background: #1a4d8c;
+        border-color: #3c7dd9;
+      }
+      #player {
+        background: #000;
+        overflow: auto;
+        min-height: 0;
+      }
+      #meta {
+        padding: 6px 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      #meta.warn {
+        color: var(--warn);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 3px 8px;
+        border-bottom: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+      }
+      .live {
+        color: #81c995;
+      }
+      .seek {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Live mutation profile harness</strong>
+      <label>
+        Events
+        <input id="file" type="file" accept="application/json,.json" />
+      </label>
+      <label>
+        Arm
+        <select id="batch">
+          <option value="on">batched (threshold 200)</option>
+          <option value="off">baseline (threshold Infinity)</option>
+        </select>
+      </label>
+      <label>
+        <input id="skipInactive" type="checkbox" />
+        skipInactive
+      </label>
+      <label>
+        <input id="layoutRead" type="checkbox" />
+        force layout in onBuild
+      </label>
+      <label>
+        Speed
+        <input id="speed" type="number" min="1" max="16" value="1" />
+      </label>
+      <label>
+        Jump to (s)
+        <input id="jump" type="number" min="0" step="0.1" value="24" />
+      </label>
+      <button id="loadSession" hidden>Load /session.json</button>
+      <button id="rebuild">Rebuild player</button>
+      <button id="play" class="primary">Play</button>
+      <button id="pause">Pause</button>
+      <button id="jumpPlay">Jump then play live</button>
+      <span id="clock" class="stat">t=—</span>
+      <a id="offLink" href="?batch=off">open baseline tab</a>
+      <a id="onLink" href="?batch=on">open batched tab</a>
+    </header>
+    <div id="meta">
+      Drop a full session JSON (Meta + FullSnapshot + incrementals). Chrome
+      Performance will show <code>rrweb.applyMutation</code> marks. Record the
+      parent page, not the iframe.
+    </div>
+    <div id="player"></div>
+    <footer>
+      <table>
+        <thead>
+          <tr>
+            <th>ms</th>
+            <th>adds</th>
+            <th>removes</th>
+            <th>path</th>
+            <th>replay t</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </footer>
+    <script src="/dist/rrweb.umd.cjs"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const $ = (id) => document.getElementById(id);
+      const batchSelect = $('batch');
+      const skipInactive = $('skipInactive');
+      const layoutRead = $('layoutRead');
+      const speedInput = $('speed');
+      const jumpInput = $('jump');
+      const metaEl = $('meta');
+      const rowsEl = $('rows');
+      const clockEl = $('clock');
+      const loadSessionBtn = $('loadSession');
+
+      batchSelect.value = params.get('batch') === 'off' ? 'off' : 'on';
+      skipInactive.checked = params.get('skipInactive') === '1';
+      layoutRead.checked = params.get('layoutRead') === '1';
+      if (params.get('speed')) speedInput.value = params.get('speed');
+      if (params.get('t')) jumpInput.value = params.get('t');
+
+      let events = [];
+      let replayer = null;
+      let clockTimer = null;
+      const timings = [];
+
+      function formatMs(ms) {
+        return Math.round(ms);
+      }
+      function formatTime(ms) {
+        const s = ms / 1000;
+        const m = Math.floor(s / 60);
+        const rem = (s % 60).toFixed(1);
+        return `${m}:${rem.padStart(4, '0')}`;
+      }
+
+      function summarize(list) {
+        const types = { 2: 0, 3: 0, 4: 0 };
+        let maxAdds = 0;
+        let large = 0;
+        let mutations = 0;
+        for (const event of list) {
+          types[event.type] = (types[event.type] || 0) + 1;
+          if (event.type === 3 && event.data && event.data.source === 0) {
+            mutations += 1;
+            const adds = (event.data.adds || []).length;
+            if (adds > maxAdds) maxAdds = adds;
+            if (adds >= 200) large += 1;
+          }
+        }
+        const start = list[0]?.timestamp;
+        const end = list[list.length - 1]?.timestamp;
+        const duration = start && end ? end - start : 0;
+        return { types, maxAdds, large, mutations, duration, count: list.length };
+      }
+
+      function normalize(raw) {
+        if (Array.isArray(raw)) return raw;
+        if (Array.isArray(raw.events)) return raw.events;
+        if (raw.data && Array.isArray(raw.data.events)) return raw.data.events;
+        throw new Error('JSON is not an rrweb event array');
+      }
+
+      function renderMeta(list, extra = '') {
+        const summary = summarize(list);
+        const missingSnapshot = !summary.types[2];
+        metaEl.className = missingSnapshot ? 'warn' : '';
+        metaEl.textContent = [
+          `${summary.count} events`,
+          `Meta ${summary.types[4] || 0}`,
+          `FullSnapshot ${summary.types[2] || 0}`,
+          `incrementals ${summary.types[3] || 0}`,
+          `mutations ${summary.mutations}`,
+          `adds≥200 ${summary.large}`,
+          `max adds ${summary.maxAdds}`,
+          `duration ${formatTime(summary.duration)}`,
+          extra,
+        ].join(' · ');
+        if (missingSnapshot) {
+          metaEl.textContent +=
+            ' · WARNING: no FullSnapshot. This is not a real replay; graft or export the full session.';
+        }
+      }
+
+      function patchApplyMutation() {
+        const proto = rrweb.Replayer.prototype;
+        if (proto.__profilePatched) return;
+        const original = proto.applyMutation;
+        proto.applyMutation = function (data, isSync) {
+          const adds = (data && data.adds && data.adds.length) || 0;
+          const removes = (data && data.removes && data.removes.length) || 0;
+          const label = `rrweb.applyMutation ${adds} adds ${
+            isSync ? 'seek' : 'live'
+          }`;
+          performance.mark(`${label}:start`);
+          const start = performance.now();
+          const result = original.call(this, data, isSync);
+          const ms = performance.now() - start;
+          performance.measure(label, `${label}:start`);
+          const replayMs = this.getCurrentTime ? this.getCurrentTime() : 0;
+          timings.push({ ms, adds, removes, isSync, replayMs });
+          if (adds >= 50 || ms >= 8) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${ms.toFixed(1)}</td><td>${adds}</td><td>${removes}</td><td class="${
+              isSync ? 'seek' : 'live'
+            }">${isSync ? 'seek/sync' : 'live'}</td><td>${formatTime(
+              replayMs,
+            )}</td>`;
+            rowsEl.prepend(tr);
+            while (rowsEl.rows.length > 80) rowsEl.deleteRow(-1);
+          }
+          if (adds >= 200) {
+            console.log(label, ms.toFixed(1) + 'ms', 'sync=', isSync);
+          }
+          return result;
+        };
+        proto.__profilePatched = true;
+      }
+
+      function destroy() {
+        if (clockTimer) clearInterval(clockTimer);
+        if (replayer) {
+          try {
+            replayer.pause();
+            replayer.destroy();
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+        replayer = null;
+        $('player').innerHTML = '';
+        rowsEl.innerHTML = '';
+        timings.length = 0;
+      }
+
+      function threshold() {
+        return batchSelect.value === 'off' ? Number.POSITIVE_INFINITY : 200;
+      }
+
+      function build() {
+        if (!events.length) {
+          throw new Error('Load events first');
+        }
+        destroy();
+        patchApplyMutation();
+        const plugins = [];
+        if (layoutRead.checked) {
+          plugins.push({
+            onBuild(node) {
+              if (node && node.nodeType === 1) void node.offsetHeight;
+            },
+          });
+        }
+        replayer = new rrweb.Replayer(events, {
+          root: $('player'),
+          skipInactive: skipInactive.checked,
+          liveMutationBatchThreshold: threshold(),
+          mouseTail: false,
+          speed: Number(speedInput.value) || 1,
+          plugins,
+        });
+        renderMeta(
+          events,
+          `batch ${
+            batchSelect.value === 'off' ? 'OFF (Infinity)' : 'ON (200)'
+          } · skipInactive ${skipInactive.checked} · layoutRead ${
+            layoutRead.checked
+          }`,
+        );
+        clockTimer = setInterval(() => {
+          if (!replayer) return;
+          clockEl.textContent = `t=${formatTime(replayer.getCurrentTime())}`;
+        }, 200);
+      }
+
+      async function loadFromFile(file) {
+        const raw = JSON.parse(await file.text());
+        events = normalize(raw);
+        renderMeta(events, file.name);
+        build();
+      }
+
+      async function loadFromUrl(url) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`GET ${url} → ${response.status}`);
+        events = normalize(await response.json());
+        renderMeta(events, url);
+        build();
+      }
+
+      $('file').addEventListener('change', (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (file) loadFromFile(file).catch((error) => alert(error.message));
+      });
+      $('rebuild').addEventListener('click', () => {
+        try {
+          build();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+      $('play').addEventListener('click', () => replayer && replayer.play(replayer.getCurrentTime()));
+      $('pause').addEventListener('click', () => replayer && replayer.pause());
+      $('jumpPlay').addEventListener('click', () => {
+        if (!replayer) return;
+        const offset = Number(jumpInput.value) * 1000;
+        replayer.pause(offset);
+        replayer.play(offset);
+      });
+      loadSessionBtn.addEventListener('click', () => {
+        loadFromUrl('/session.json').catch((error) => alert(error.message));
+      });
+
+      fetch('/session.json', { method: 'HEAD' })
+        .then((response) => {
+          if (response.ok) {
+            loadSessionBtn.hidden = false;
+            if (params.get('autoload') !== '0') {
+              return loadFromUrl('/session.json');
+            }
+          }
+        })
+        .catch(() => undefined);
+    </script>
+  </body>
+</html>

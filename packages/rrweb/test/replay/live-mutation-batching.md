@@ -78,6 +78,23 @@ The 13–22x rows are a specific scenario, not a general claim: a plugin reads `
 
 So the win depends entirely on whether anything reads layout between insertions during apply. If the embedding player does, batching is a large win; if it does not, expect roughly no change. Before rolling this out, confirm which case the target player is in — a Chrome performance profile showing repeated "Recalculate Style" / "Layout" entries interleaved with insertions during `applyIncremental` is the signal that batching will help.
 
+## Profiling harness
+
+The synthetic tests and incremental-only dumps are not a substitute for the product player. Use the local harness with a **full** session export (Meta + FullSnapshot + incrementals):
+
+```sh
+pnpm --filter @amplitude/rrweb profile-replay -- /path/to/session.json
+```
+
+That serves:
+
+- `http://127.0.0.1:4177/?batch=on` — this PR, threshold 200
+- `http://127.0.0.1:4177/?batch=off` — same build, per-node inserts (`Infinity`)
+
+The player patches `applyMutation` with `performance.mark` / `performance.measure` named `rrweb.applyMutation … adds live|seek`, so a Chrome Performance recording of the **parent** page shows each mutation as its own measure. Use **Jump then play live** at ~24s so the stall is applied on the live path (batching is off during seek).
+
+Optional query flags: `skipInactive=1`, `layoutRead=1` (reads `offsetHeight` in `onBuild`), `t=24`, `speed=1`. If no path is passed, drop a JSON file in the UI, or put one at `packages/rrweb/temp/session.json`.
+
 ## Caveats
 
 - Times are median of 5 runs on this VM; they will move with CPU, Chrome version, and whether the machine is busy.

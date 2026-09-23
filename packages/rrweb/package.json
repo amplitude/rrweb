@@ -13,6 +13,7 @@
     "test:update": "pnpm test:headless --update",
     "retest:update": "cross-env PUPPETEER_HEADLESS=true pnpm retest --update",
     "repl": "pnpm build && node scripts/repl.js",
+    "profile-replay": "pnpm build && node scripts/profile-replay-server.js",
     "live-stream": "pnpm build && node scripts/stream.js",
     "dev": "vite build --watch",
     "build": "turbo run prepublish",
