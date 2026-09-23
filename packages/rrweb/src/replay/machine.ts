@@ -97,10 +97,7 @@ export type PlayerState =
 type PlayerAssets = {
   emitter: Emitter;
   applyEventsSynchronously(events: Array<eventWithTime>): void;
-  getCastFn(
-    event: eventWithTime,
-    isSync: boolean,
-  ): () => void | Promise<void>;
+  getCastFn(event: eventWithTime, isSync: boolean): () => void | Promise<void>;
 };
 export function createPlayerService(
   context: PlayerContext,
