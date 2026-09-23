@@ -133,13 +133,12 @@ describe('large live mutation batching', () => {
         },
       ];
 
-      const rrweb = (
-        window as unknown as { rrweb: typeof import('../../src') }
-      ).rrweb;
+      const rrweb = (window as unknown as { rrweb: typeof import('../../src') })
+        .rrweb;
       const replayer = new rrweb.Replayer(
         events as ConstructorParameters<typeof rrweb.Replayer>[0],
         {
-        root: document.body,
+          root: document.body,
         },
       );
       replayer.play();

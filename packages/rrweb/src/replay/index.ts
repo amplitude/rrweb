@@ -2045,18 +2045,14 @@ export class Replayer {
           group.fragment.appendChild(realTarget);
         }
         stagedNodeGroups.set(realTarget, group);
-        pendingAfterAppend.push(() =>
-          afterAppend(target, mutation.node.id),
-        );
+        pendingAfterAppend.push(() => afterAppend(target, mutation.node.id));
       } else {
         insertNode(parent, target, previous, next);
         /**
          * target was added, execute plugin hooks
          */
         if (shouldBatchLiveAdds)
-          pendingAfterAppend.push(() =>
-            afterAppend(target, mutation.node.id),
-          );
+          pendingAfterAppend.push(() => afterAppend(target, mutation.node.id));
         else afterAppend(target, mutation.node.id);
       }
 
