@@ -194,10 +194,8 @@ describe('large live mutation batching', () => {
               ':scope > [data-index] > span',
             ).length,
             firstIndex: liveRoots[0]?.getAttribute('data-index') ?? null,
-            lastIndex:
-              liveRoots.at(-1)?.getAttribute('data-index') ?? null,
-            anchorStillLast:
-              container.lastElementChild?.id === 'anchor',
+            lastIndex: liveRoots.at(-1)?.getAttribute('data-index') ?? null,
+            anchorStillLast: container.lastElementChild?.id === 'anchor',
           };
         },
         roots,
