@@ -2031,7 +2031,7 @@ export class Replayer {
               : null;
           group = {
             parent: realParent,
-            fragment: realTarget.ownerDocument.createDocumentFragment(),
+            fragment: (targetDoc as Document).createDocumentFragment(),
             anchor,
           };
           stagedRootGroups.push(group);
