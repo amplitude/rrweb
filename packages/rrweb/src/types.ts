@@ -232,11 +232,50 @@ export type playerConfig = {
    * Set to `Infinity` to always insert nodes one at a time. Default: 200.
    */
   liveMutationBatchThreshold: number;
+  /**
+   * Debug-only callback with a phase breakdown for each mutation event.
+   * Disabled by default; intended for the local replay profiling harness.
+   */
+  onMutationTrace?: (trace: MutationTrace) => void;
   logger: {
     log: (...args: Parameters<typeof console.log>) => void;
     warn: (...args: Parameters<typeof console.warn>) => void;
   };
   plugins?: ReplayPlugin[];
+};
+
+export type MutationTrace = {
+  totalMs: number;
+  isSync: boolean;
+  usingVirtualDom: boolean;
+  adds: number;
+  removes: number;
+  texts: number;
+  attributes: number;
+  phases: {
+    virtualDomSetupMs: number;
+    removesMs: number;
+    setupMs: number;
+    lookupMs: number;
+    buildMs: number;
+    insertMs: number;
+    resolveQueueMs: number;
+    fragmentFlushMs: number;
+    afterAppendMs: number;
+    textsMs: number;
+    attributesMs: number;
+  };
+  counters: {
+    built: number;
+    stagedRoots: number;
+    fragmentGroups: number;
+    queuedMissingParent: number;
+    queuedMissingNext: number;
+    skippedMissingRoot: number;
+    resolvedTrees: number;
+    droppedTrees: number;
+    legacyMissing: number;
+  };
 };
 
 export type missingNode = {

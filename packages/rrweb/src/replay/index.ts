@@ -1717,6 +1717,43 @@ export class Replayer {
    * @param isSync - Whether the mutation should be applied synchronously (while fast-forwarding).
    */
   private applyMutation(d: mutationData, isSync: boolean) {
+    const traceStart = performance.now();
+    const trace = this.config.onMutationTrace
+      ? {
+          totalMs: 0,
+          isSync,
+          usingVirtualDom: this.usingVirtualDom,
+          adds: d.adds.length,
+          removes: d.removes.length,
+          texts: d.texts.length,
+          attributes: d.attributes.length,
+          phases: {
+            virtualDomSetupMs: 0,
+            removesMs: 0,
+            setupMs: 0,
+            lookupMs: 0,
+            buildMs: 0,
+            insertMs: 0,
+            resolveQueueMs: 0,
+            fragmentFlushMs: 0,
+            afterAppendMs: 0,
+            textsMs: 0,
+            attributesMs: 0,
+          },
+          counters: {
+            built: 0,
+            stagedRoots: 0,
+            fragmentGroups: 0,
+            queuedMissingParent: 0,
+            queuedMissingNext: 0,
+            skippedMissingRoot: 0,
+            resolvedTrees: 0,
+            droppedTrees: 0,
+            legacyMissing: 0,
+          },
+        }
+      : null;
+    let phaseStart = performance.now();
     // Only apply virtual dom optimization if the fast-forward process has node mutation. Because the cost of creating a virtual dom tree and executing the diff algorithm is usually higher than directly applying other kind of events.
     if (this.config.useVirtualDom && !this.usingVirtualDom && isSync) {
       this.usingVirtualDom = true;
@@ -1738,6 +1775,11 @@ export class Replayer {
           }
         }
       }
+    }
+    if (trace) {
+      trace.usingVirtualDom = this.usingVirtualDom;
+      trace.phases.virtualDomSetupMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
     }
     const mirror = this.usingVirtualDom ? this.virtualDom.mirror : this.mirror;
     type TNode = typeof mirror extends Mirror ? Node : RRNode;
@@ -1795,6 +1837,10 @@ export class Replayer {
           }
         }
     });
+    if (trace) {
+      trace.phases.removesMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
+    }
 
     const legacy_missingNodeMap: missingNodeMap = {
       ...this.legacy_missingNodeRetryMap,
@@ -1830,6 +1876,9 @@ export class Replayer {
     // mutation can carry thousands of adds.
     const pendingAfterAppendNodes: Array<Node | RRNode> = [];
     const pendingAfterAppendIds: number[] = [];
+    if (trace) {
+      trace.phases.setupMs = performance.now() - phaseStart;
+    }
 
     const insertNode = (
       parent: Node | ShadowRoot | RRNode,
@@ -1874,14 +1923,17 @@ export class Replayer {
       if (!this.iframe.contentDocument) {
         return this.warn('Looks like your replayer has been destroyed.');
       }
+      let operationStart = trace ? performance.now() : 0;
       let parent: Node | null | ShadowRoot | RRNode = mirror.getNode(
         mutation.parentId,
       );
+      if (trace) trace.phases.lookupMs += performance.now() - operationStart;
       if (!parent) {
         if (mutation.node.type === NodeType.Document) {
           // is newly added document, maybe the document node of an iframe
           return this.newDocumentQueue.push(mutation);
         }
+        if (trace) trace.counters.queuedMissingParent += 1;
         return queue.push(mutation);
       }
 
@@ -1900,17 +1952,21 @@ export class Replayer {
 
       let previous: Node | RRNode | null = null;
       let next: Node | RRNode | null = null;
+      operationStart = trace ? performance.now() : 0;
       if (mutation.previousId) {
         previous = mirror.getNode(mutation.previousId);
       }
       if (mutation.nextId) {
         next = mirror.getNode(mutation.nextId);
       }
+      if (trace) trace.phases.lookupMs += performance.now() - operationStart;
       if (nextNotInDOM(mutation)) {
+        if (trace) trace.counters.queuedMissingNext += 1;
         return queue.push(mutation);
       }
 
       if (mutation.node.rootId && !mirror.getNode(mutation.node.rootId)) {
+        if (trace) trace.counters.skippedMissingRoot += 1;
         return;
       }
 
@@ -1929,6 +1985,7 @@ export class Replayer {
       const afterAppend = (node: Node | RRNode, id: number) =>
         this.afterAppendStagedNode(node, id);
 
+      operationStart = trace ? performance.now() : 0;
       const target = buildNodeWithSN(mutation.node, {
         doc: targetDoc as Document, // can be Document or RRDocument
         mirror: mirror as Mirror, // can be this.mirror or virtualDom.mirror
@@ -1941,6 +1998,10 @@ export class Replayer {
          */
         afterAppend,
       }) as Node | RRNode;
+      if (trace) {
+        trace.phases.buildMs += performance.now() - operationStart;
+        trace.counters.built += 1;
+      }
 
       // legacy data, we should not have -1 siblings any more
       if (mutation.previousId === -1 || mutation.nextId === -1) {
@@ -2025,6 +2086,7 @@ export class Replayer {
         shouldBatchLiveAdds &&
         !addedNodeIds?.has(mutation.parentId) &&
         parentSn?.type !== NodeType.Document;
+      operationStart = trace ? performance.now() : 0;
       if (shouldStageRoot) {
         const realTarget = target as Node;
         const realPrevious = previous as Node | null;
@@ -2046,6 +2108,7 @@ export class Replayer {
             anchor,
           };
           stagedRootGroups.push(group);
+          if (trace) trace.counters.fragmentGroups += 1;
         }
         const stagedPreviousSibling = realPrevious?.nextSibling;
         if (stagedPreviousSibling?.parentNode === group.fragment) {
@@ -2056,17 +2119,27 @@ export class Replayer {
           group.fragment.appendChild(realTarget);
         }
         stagedNodeGroups.set(realTarget, group);
+        if (trace) trace.counters.stagedRoots += 1;
         pendingAfterAppendNodes.push(target);
         pendingAfterAppendIds.push(mutation.node.id);
+        if (trace)
+          trace.phases.insertMs += performance.now() - operationStart;
       } else {
         insertNode(parent, target, previous, next);
+        if (trace)
+          trace.phases.insertMs += performance.now() - operationStart;
         /**
          * target was added, execute plugin hooks
          */
         if (shouldBatchLiveAdds) {
           pendingAfterAppendNodes.push(target);
           pendingAfterAppendIds.push(mutation.node.id);
-        } else afterAppend(target, mutation.node.id);
+        } else {
+          operationStart = trace ? performance.now() : 0;
+          afterAppend(target, mutation.node.id);
+          if (trace)
+            trace.phases.afterAppendMs += performance.now() - operationStart;
+        }
       }
 
       /**
@@ -2112,6 +2185,7 @@ export class Replayer {
     });
 
     const startTime = Date.now();
+    phaseStart = performance.now();
     while (queue.length) {
       // transform queue to resolve tree
       const resolveTrees = queueToResolveTrees(queue);
@@ -2126,16 +2200,22 @@ export class Replayer {
       for (const tree of resolveTrees) {
         const parent = mirror.getNode(tree.value.parentId);
         if (!parent) {
+          if (trace) trace.counters.droppedTrees += 1;
           this.debug(
             'Drop resolve tree since there is no parent for the root node.',
             tree,
           );
         } else {
+          if (trace) trace.counters.resolvedTrees += 1;
           iterateResolveTree(tree, (mutation) => {
             appendNode(mutation);
           });
         }
       }
+    }
+    if (trace) {
+      trace.phases.resolveQueueMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
     }
 
     for (const group of stagedRootGroups) {
@@ -2143,17 +2223,26 @@ export class Replayer {
         group.anchor?.parentNode === group.parent ? group.anchor : null;
       group.parent.insertBefore(group.fragment, anchor);
     }
+    if (trace) {
+      trace.phases.fragmentFlushMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
+    }
     for (let i = 0; i < pendingAfterAppendNodes.length; i++) {
       this.afterAppendStagedNode(
         pendingAfterAppendNodes[i],
         pendingAfterAppendIds[i],
       );
     }
+    if (trace) {
+      trace.phases.afterAppendMs += performance.now() - phaseStart;
+      trace.counters.legacyMissing = Object.keys(legacy_missingNodeMap).length;
+    }
 
     if (Object.keys(legacy_missingNodeMap).length) {
       Object.assign(this.legacy_missingNodeRetryMap, legacy_missingNodeMap);
     }
 
+    phaseStart = performance.now();
     uniqueTextMutations(d.texts).forEach((mutation) => {
       const target = mirror.getNode(mutation.id);
       if (!target) {
@@ -2181,6 +2270,8 @@ export class Replayer {
         if (parent?.rules?.length > 0) parent.rules = [];
       }
     });
+    if (trace) trace.phases.textsMs = performance.now() - phaseStart;
+    phaseStart = performance.now();
     d.attributes.forEach((mutation) => {
       const target = mirror.getNode(mutation.id);
       if (!target) {
@@ -2283,6 +2374,11 @@ export class Replayer {
         }
       }
     });
+    if (trace) {
+      trace.phases.attributesMs = performance.now() - phaseStart;
+      trace.totalMs = performance.now() - traceStart;
+      this.config.onMutationTrace?.(trace);
+    }
   }
 
   /**

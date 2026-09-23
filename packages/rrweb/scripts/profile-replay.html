@@ -144,6 +144,7 @@
       <button id="pause">Pause</button>
       <button id="jumpPlay">Jump then play live</button>
       <button id="report">Log summary</button>
+      <button id="download">Download report JSON</button>
       <span id="clock" class="stat">t=—</span>
       <a id="offLink" href="?batch=off">open baseline tab</a>
       <a id="onLink" href="?batch=on">open batched tab</a>
@@ -196,6 +197,8 @@
       let replayer = null;
       let clockTimer = null;
       const timings = [];
+      const warnings = [];
+      const fullSnapshots = [];
 
       function formatMs(ms) {
         return Math.round(ms);
@@ -258,15 +261,40 @@
       // Per-mutation DOM counters. The replay tree lives in an iframe with its
       // own Node prototype, and the document is replaced on snapshot rebuild,
       // so the patch is re-applied lazily.
-      const dom = { insertMs: 0, live: 0, fragments: 0, detached: 0 };
+      const dom = {
+        insertMs: 0,
+        createMs: 0,
+        attributeMs: 0,
+        live: 0,
+        fragments: 0,
+        detached: 0,
+        creates: 0,
+        attributeSets: 0,
+        tags: {},
+        attributes: {},
+      };
+      let lastCoreTrace = null;
 
       function patchFrameNode(replayerInstance) {
         const frameWin =
           replayerInstance.iframe && replayerInstance.iframe.contentWindow;
         if (!frameWin || frameWin.__profilePatched) return;
         const proto = frameWin.Node.prototype;
+        const documentProto = frameWin.Document.prototype;
+        const elementProto = frameWin.Element.prototype;
         const originalInsertBefore = proto.insertBefore;
         const originalAppendChild = proto.appendChild;
+        const originalCreateElement = documentProto.createElement;
+        const originalCreateElementNS = documentProto.createElementNS;
+        const originalCreateTextNode = documentProto.createTextNode;
+        const originalSetAttribute = elementProto.setAttribute;
+        const originalSetAttributeNS = elementProto.setAttributeNS;
+        const timeApi = (bucket, run) => {
+          const start = performance.now();
+          const result = run();
+          dom[bucket] += performance.now() - start;
+          return result;
+        };
         const record = (parent, node, run) => {
           const connected = parent.isConnected;
           const start = performance.now();
@@ -288,12 +316,65 @@
         proto.appendChild = function (node) {
           return record(this, node, () => originalAppendChild.call(this, node));
         };
+        documentProto.createElement = function (tag, options) {
+          dom.creates += 1;
+          dom.tags[tag] = (dom.tags[tag] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateElement.call(this, tag, options),
+          );
+        };
+        documentProto.createElementNS = function (namespace, tag, options) {
+          dom.creates += 1;
+          dom.tags[tag] = (dom.tags[tag] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateElementNS.call(this, namespace, tag, options),
+          );
+        };
+        documentProto.createTextNode = function (text) {
+          dom.creates += 1;
+          dom.tags['#text'] = (dom.tags['#text'] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateTextNode.call(this, text),
+          );
+        };
+        elementProto.setAttribute = function (name, value) {
+          dom.attributeSets += 1;
+          dom.attributes[name] = (dom.attributes[name] || 0) + 1;
+          return timeApi('attributeMs', () =>
+            originalSetAttribute.call(this, name, value),
+          );
+        };
+        elementProto.setAttributeNS = function (namespace, name, value) {
+          dom.attributeSets += 1;
+          dom.attributes[name] = (dom.attributes[name] || 0) + 1;
+          return timeApi('attributeMs', () =>
+            originalSetAttributeNS.call(this, namespace, name, value),
+          );
+        };
         frameWin.__profilePatched = true;
       }
 
       function patchApplyMutation() {
         const proto = rrweb.Replayer.prototype;
         if (proto.__profilePatched) return;
+        const originalRebuild = proto.rebuildFullSnapshot;
+        proto.rebuildFullSnapshot = function (event, isSync) {
+          const label = `rrweb.rebuildFullSnapshot ${
+            isSync ? 'seek' : 'poster'
+          }`;
+          performance.mark(`${label}:start`);
+          const start = performance.now();
+          const result = originalRebuild.call(this, event, isSync);
+          const ms = performance.now() - start;
+          performance.measure(label, `${label}:start`);
+          fullSnapshots.push({
+            ms,
+            isSync: Boolean(isSync),
+            timestamp: event.timestamp,
+          });
+          console.log(label, `${ms.toFixed(1)}ms`);
+          return result;
+        };
         const original = proto.applyMutation;
         proto.applyMutation = function (data, isSync) {
           patchFrameNode(this);
@@ -303,9 +384,16 @@
             isSync ? 'seek' : 'live'
           }`;
           dom.insertMs = 0;
+          dom.createMs = 0;
+          dom.attributeMs = 0;
           dom.live = 0;
           dom.fragments = 0;
           dom.detached = 0;
+          dom.creates = 0;
+          dom.attributeSets = 0;
+          dom.tags = {};
+          dom.attributes = {};
+          lastCoreTrace = null;
           performance.mark(`${label}:start`);
           const start = performance.now();
           const result = original.call(this, data, isSync);
@@ -321,6 +409,13 @@
             live: dom.live,
             fragments: dom.fragments,
             detached: dom.detached,
+            createMs: dom.createMs,
+            attributeMs: dom.attributeMs,
+            creates: dom.creates,
+            attributeSets: dom.attributeSets,
+            tags: { ...dom.tags },
+            attributeNames: { ...dom.attributes },
+            core: lastCoreTrace,
             adds,
             removes,
             isSync,
@@ -350,6 +445,8 @@
               `total ${ms.toFixed(1)}ms`,
               `insert ${sample.insertMs.toFixed(1)}ms`,
               `build ${sample.buildMs.toFixed(1)}ms`,
+              `create ${sample.createMs.toFixed(1)}ms`,
+              `attrs ${sample.attributeMs.toFixed(1)}ms`,
               `liveInserts ${sample.live}`,
               `fragments ${sample.fragments}`,
             );
@@ -366,31 +463,126 @@
           return;
         }
         const sum = (key) => live.reduce((total, t) => total + t[key], 0);
+        const sumNested = (parent, key) =>
+          live.reduce(
+            (total, t) => total + (t.core?.[parent]?.[key] || 0),
+            0,
+          );
+        const mergeCounts = (key) => {
+          const counts = {};
+          for (const timing of live) {
+            for (const [name, count] of Object.entries(timing[key] || {})) {
+              counts[name] = (counts[name] || 0) + count;
+            }
+          }
+          return Object.fromEntries(
+            Object.entries(counts).sort((a, b) => b[1] - a[1]),
+          );
+        };
+        const phases = {};
+        for (const key of [
+          'virtualDomSetupMs',
+          'removesMs',
+          'setupMs',
+          'lookupMs',
+          'buildMs',
+          'insertMs',
+          'resolveQueueMs',
+          'fragmentFlushMs',
+          'afterAppendMs',
+          'textsMs',
+          'attributesMs',
+        ]) {
+          phases[key] = +sumNested('phases', key).toFixed(2);
+        }
+        const counters = {};
+        for (const key of [
+          'built',
+          'stagedRoots',
+          'fragmentGroups',
+          'queuedMissingParent',
+          'queuedMissingNext',
+          'skippedMissingRoot',
+          'resolvedTrees',
+          'droppedTrees',
+          'legacyMissing',
+        ]) {
+          counters[key] = sumNested('counters', key);
+        }
         const summary = {
           arm: batchSelect.value === 'off' ? 'baseline (Infinity)' : 'batched (200)',
           liveMutations: live.length,
           totalMs: +sum('ms').toFixed(1),
           insertMs: +sum('insertMs').toFixed(1),
           buildMs: +sum('buildMs').toFixed(1),
+          createMs: +sum('createMs').toFixed(1),
+          attributeMs: +sum('attributeMs').toFixed(1),
+          creates: sum('creates'),
+          attributeSets: sum('attributeSets'),
           liveInserts: sum('live'),
           fragmentCommits: sum('fragments'),
           detachedInserts: sum('detached'),
+          phases,
+          counters,
+          topTags: Object.fromEntries(
+            Object.entries(mergeCounts('tags')).slice(0, 20),
+          ),
+          topAttributes: Object.fromEntries(
+            Object.entries(mergeCounts('attributeNames')).slice(0, 20),
+          ),
+          warnings: [...warnings],
+          fullSnapshots: [...fullSnapshots],
           slowest: live
             .slice()
             .sort((a, b) => b.ms - a.ms)
             .slice(0, 5)
-            .map(
-              (t) =>
-                `${t.ms.toFixed(1)}ms (${t.adds} adds, insert ${t.insertMs.toFixed(
-                  1,
-                )}ms, ${t.live} live inserts)`,
-            ),
+            .map((t) => ({
+              totalMs: +t.ms.toFixed(2),
+              replayMs: +t.replayMs.toFixed(1),
+              adds: t.adds,
+              removes: t.removes,
+              insertMs: +t.insertMs.toFixed(2),
+              createMs: +t.createMs.toFixed(2),
+              attributeMs: +t.attributeMs.toFixed(2),
+              liveInserts: t.live,
+              fragmentCommits: t.fragments,
+              core: t.core,
+              topTags: Object.fromEntries(
+                Object.entries(t.tags)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 10),
+              ),
+              topAttributes: Object.fromEntries(
+                Object.entries(t.attributeNames)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 10),
+              ),
+            })),
         };
         console.table([summary]);
-        console.log(summary.slowest);
+        console.log('core phases', summary.phases);
+        console.log('core counters', summary.counters);
+        console.log('top tags', summary.topTags);
+        console.log('top attributes', summary.topAttributes);
+        console.log('slowest mutations', summary.slowest);
+        if (summary.warnings.length)
+          console.warn('replayer warnings', summary.warnings);
         return summary;
       }
       window.__profileReport = report;
+
+      function downloadReport() {
+        const summary = report();
+        if (!summary) return;
+        const blob = new Blob([JSON.stringify(summary, null, 2)], {
+          type: 'application/json',
+        });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `rrweb-profile-${batchSelect.value}-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
 
       function destroy() {
         if (clockTimer) clearInterval(clockTimer);
@@ -406,6 +598,8 @@
         $('player').innerHTML = '';
         rowsEl.innerHTML = '';
         timings.length = 0;
+        warnings.length = 0;
+        fullSnapshots.length = 0;
       }
 
       function threshold() {
@@ -433,6 +627,27 @@
           mouseTail: false,
           speed: Number(speedInput.value) || 1,
           plugins,
+          onMutationTrace(trace) {
+            lastCoreTrace = trace;
+          },
+          logger: {
+            log: (...args) => console.log(...args),
+            warn: (...args) => {
+              const message = args
+                .map((value) => {
+                  try {
+                    return typeof value === 'string'
+                      ? value
+                      : JSON.stringify(value);
+                  } catch {
+                    return String(value);
+                  }
+                })
+                .join(' ');
+              warnings.push(message.slice(0, 2_000));
+              console.warn(...args);
+            },
+          },
         });
         renderMeta(
           events,
@@ -483,6 +698,7 @@
         replayer.play(offset);
       });
       $('report').addEventListener('click', () => report());
+      $('download').addEventListener('click', () => downloadReport());
       loadSessionBtn.addEventListener('click', () => {
         loadFromUrl('/session.json').catch((error) => alert(error.message));
       });
