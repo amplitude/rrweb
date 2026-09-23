@@ -2036,7 +2036,14 @@ export class Replayer {
           };
           stagedRootGroups.push(group);
         }
-        insertNode(group.fragment, realTarget, realPrevious, realNext);
+        const stagedPreviousSibling = realPrevious?.nextSibling;
+        if (stagedPreviousSibling?.parentNode === group.fragment) {
+          group.fragment.insertBefore(realTarget, stagedPreviousSibling);
+        } else if (realNext?.parentNode === group.fragment) {
+          group.fragment.insertBefore(realTarget, realNext);
+        } else {
+          group.fragment.appendChild(realTarget);
+        }
         stagedNodeGroups.set(realTarget, group);
         pendingAfterAppend.push(() =>
           afterAppend(target, mutation.node.id),
