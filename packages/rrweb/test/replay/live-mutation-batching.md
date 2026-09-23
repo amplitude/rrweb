@@ -74,10 +74,10 @@ Two caveats on that measurement: the uploaded events contain no FullSnapshot, so
 
 The harness splits each `applyMutation` into time spent inside DOM insertion calls (measured by patching the replay iframe's `Node.prototype`) and everything else — building elements, setting attributes, masking, mirror bookkeeping. Real 604–609s events, live path:
 
-| Arm | total | insertion | build/other | live inserts | fragment commits |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| baseline | 40.3ms | 3.2ms | 37.1ms | 6,550 | 0 |
-| batched | 40.6ms | 0.9ms | 39.7ms | 616 | 8 |
+| Arm      |  total | insertion | build/other | live inserts | fragment commits |
+| -------- | -----: | --------: | ----------: | -----------: | ---------------: |
+| baseline | 40.3ms |     3.2ms |      37.1ms |        6,550 |                0 |
+| batched  | 40.6ms |     0.9ms |      39.7ms |          616 |                8 |
 
 For the 3,044-add mutation on its own: baseline 14.1ms total with 1.5ms in insertion; batched 16.8ms total with 0.4ms in insertion.
 
