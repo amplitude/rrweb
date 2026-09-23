@@ -24,6 +24,7 @@ import styleSheetRuleEvents from './events/style-sheet-rule-events';
 import badTextareaEvents from './events/bad-textarea';
 import badStyleEvents from './events/bad-style';
 import StyleSheetTextMutation from './events/style-sheet-text-mutation';
+import unresolvableMutationEvents from './events/unresolvable-mutation';
 import {
   assertDomSnapshot,
   sampleEvents as events,
@@ -1399,6 +1400,33 @@ describe('replayer', function () {
 `);
     const newColor = 'rgb(255, 255, 0)'; // yellow
     expect(changedColors).toEqual([newColor, newColor]);
+  });
+
+  it('stops resolving queued adds as soon as they stop making progress', async () => {
+    await page.evaluate(
+      `events = ${JSON.stringify(unresolvableMutationEvents)}`,
+    );
+
+    const result = await page.evaluate(`
+      const { Replayer } = rrweb;
+      const replayer = new Replayer(events, { showWarning: false });
+      const start = performance.now();
+      replayer.pause(200);
+      ({
+        duration: performance.now() - start,
+        resolvable: Boolean(
+          replayer.iframe.contentDocument.querySelector('#resolvable'),
+        ),
+        unresolvable: replayer.iframe.contentDocument.querySelectorAll(
+          '[id^="unresolvable-"]',
+        ).length,
+      });
+    `);
+
+    // the resolve loop used to spin until its 500ms timeout instead of
+    // bailing out once the queue stopped shrinking
+    expect((result as { duration: number }).duration).toBeLessThan(300);
+    expect(result).toMatchObject({ resolvable: true, unresolvable: 0 });
   });
 
   it('injects rrweb default styles into shadow roots', async () => {

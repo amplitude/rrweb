@@ -2028,6 +2028,7 @@ export class Replayer {
     const startTime = Date.now();
     while (queue.length) {
       // transform queue to resolve tree
+      const pendingCount = queue.length;
       const resolveTrees = queueToResolveTrees(queue);
       queue.length = 0;
       if (Date.now() - startTime > 500) {
@@ -2049,6 +2050,19 @@ export class Replayer {
             appendNode(mutation);
           });
         }
+      }
+      /**
+       * Every queued mutation was put back on the queue untouched, so the
+       * mirror is unchanged and any further pass would repeat this one.
+       * Without this check the loop spins until the timeout above, which
+       * costs 500ms of the main thread for every such mutation event.
+       */
+      if (queue.length === pendingCount) {
+        this.warn(
+          'Dropping the resolve queue since none of the remaining nodes can be resolved:',
+          queue.slice(),
+        );
+        break;
       }
     }
 
