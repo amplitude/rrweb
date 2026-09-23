@@ -97,7 +97,7 @@ export class Timer {
         cancelAnimationFrame(this.raf);
       }
       this.raf = null;
-    this.waitingForAction = false;
+      this.waitingForAction = false;
     }
     this.actions.length = 0;
     this.actionIndex = 0;
