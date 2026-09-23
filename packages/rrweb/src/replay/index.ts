@@ -222,6 +222,7 @@ export class Replayer {
       useVirtualDom: true, // Virtual-dom optimization is enabled by default.
       useSeekCache: false, // Opt-in until production-validated; flip to true once confidence is high.
       seekCacheMaxEntries: 10,
+      liveMutationBatchThreshold: LIVE_MUTATION_BATCH_THRESHOLD,
       logger: console,
     };
     this.config = Object.assign({}, defaultConfig, config);
@@ -1793,7 +1794,7 @@ export class Replayer {
     const addedNodeIds = new Set(d.adds.map((mutation) => mutation.node.id));
     const shouldBatchLiveAdds =
       !this.usingVirtualDom &&
-      d.adds.length >= LIVE_MUTATION_BATCH_THRESHOLD &&
+      d.adds.length >= this.config.liveMutationBatchThreshold &&
       d.adds.every(
         (mutation) =>
           mutation.previousId !== -1 &&

@@ -224,6 +224,14 @@ export type playerConfig = {
    * evicted when the limit is reached. Default: 10.
    */
   seekCacheMaxEntries: number;
+  /**
+   * Minimum number of added nodes in a live incremental mutation before the
+   * replayer stages new root subtrees in a DocumentFragment and commits each
+   * contiguous run with a single insertion into the connected iframe.
+   *
+   * Set to `Infinity` to always insert nodes one at a time. Default: 200.
+   */
+  liveMutationBatchThreshold: number;
   logger: {
     log: (...args: Parameters<typeof console.log>) => void;
     warn: (...args: Parameters<typeof console.warn>) => void;
