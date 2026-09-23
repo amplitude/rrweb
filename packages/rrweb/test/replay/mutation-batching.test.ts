@@ -265,10 +265,14 @@ describe('large live mutation batching', () => {
                 root: host,
               },
             );
+            await new Promise((resolve) => setTimeout(resolve, 20));
 
             const container = replayer.iframe.contentDocument?.querySelector(
               '#container',
             ) as HTMLDivElement;
+            if (!container) {
+              throw new Error('replay snapshot did not create #container');
+            }
             const originalInsertBefore = container.insertBefore.bind(container);
             let liveInsertMs = 0;
             let liveInsertions = 0;
