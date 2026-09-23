@@ -102,6 +102,8 @@ const REPLAY_CONSOLE_PREFIX = '[replayer]';
 
 const INJECTED_STYLE_ID = '__rrweb-injected-style__';
 
+const LIVE_MUTATION_BATCH_THRESHOLD = 200;
+
 const defaultMouseTailConfig = {
   duration: 500,
   lineCap: 'round',
@@ -1788,6 +1790,50 @@ export class Replayer {
       ...this.legacy_missingNodeRetryMap,
     };
     const queue: addedNodeMutation[] = [];
+    const addedNodeIds = new Set(d.adds.map((mutation) => mutation.node.id));
+    const shouldBatchLiveAdds =
+      !this.usingVirtualDom &&
+      d.adds.length >= LIVE_MUTATION_BATCH_THRESHOLD &&
+      d.adds.every(
+        (mutation) =>
+          mutation.previousId !== -1 &&
+          mutation.nextId !== -1 &&
+          !mutation.node.isShadow &&
+          mutation.node.type !== NodeType.Document &&
+          !(
+            mutation.node.type === NodeType.Element &&
+            mutation.node.tagName === 'iframe'
+          ),
+      );
+    type StagedRootGroup = {
+      parent: Node | ShadowRoot;
+      fragment: DocumentFragment;
+      anchor: Node | null;
+    };
+    const stagedRootGroups: StagedRootGroup[] = [];
+    const stagedNodeGroups = new Map<Node, StagedRootGroup>();
+    const pendingAfterAppend: Array<() => void> = [];
+
+    const insertNode = (
+      parent: Node | ShadowRoot | RRNode,
+      target: Node | RRNode,
+      previous: Node | RRNode | null,
+      next: Node | RRNode | null,
+    ) => {
+      type TNode = typeof mirror extends Mirror ? Node : RRNode;
+      if (previous && previous.nextSibling && previous.nextSibling.parentNode) {
+        (parent as TNode).insertBefore(
+          target as TNode,
+          previous.nextSibling as TNode,
+        );
+      } else if (next && next.parentNode) {
+        (parent as TNode).contains(next as TNode)
+          ? (parent as TNode).insertBefore(target as TNode, next as TNode)
+          : (parent as TNode).insertBefore(target as TNode, null);
+      } else {
+        (parent as TNode).appendChild(target as TNode);
+      }
+    };
 
     // next not present at this moment
     const nextNotInDOM = (mutation: addedNodeMutation) => {
@@ -1964,24 +2010,48 @@ export class Replayer {
           );
       }
 
-      if (previous && previous.nextSibling && previous.nextSibling.parentNode) {
-        (parent as TNode).insertBefore(
-          target as TNode,
-          previous.nextSibling as TNode,
+      const shouldStageRoot =
+        shouldBatchLiveAdds &&
+        !addedNodeIds.has(mutation.parentId) &&
+        parentSn?.type !== NodeType.Document;
+      if (shouldStageRoot) {
+        const realTarget = target as Node;
+        const realPrevious = previous as Node | null;
+        const realNext = next as Node | null;
+        let group =
+          (realPrevious && stagedNodeGroups.get(realPrevious)) ||
+          (realNext && stagedNodeGroups.get(realNext));
+        if (!group) {
+          const realParent = parent as Node | ShadowRoot;
+          const anchor =
+            realNext?.parentNode === realParent
+              ? realNext
+              : realPrevious?.parentNode === realParent
+              ? realPrevious.nextSibling
+              : null;
+          group = {
+            parent: realParent,
+            fragment: realTarget.ownerDocument.createDocumentFragment(),
+            anchor,
+          };
+          stagedRootGroups.push(group);
+        }
+        insertNode(group.fragment, realTarget, realPrevious, realNext);
+        stagedNodeGroups.set(realTarget, group);
+        pendingAfterAppend.push(() =>
+          afterAppend(target, mutation.node.id),
         );
-      } else if (next && next.parentNode) {
-        // making sure the parent contains the reference nodes
-        // before we insert target before next.
-        (parent as TNode).contains(next as TNode)
-          ? (parent as TNode).insertBefore(target as TNode, next as TNode)
-          : (parent as TNode).insertBefore(target as TNode, null);
       } else {
-        (parent as TNode).appendChild(target as TNode);
+        insertNode(parent, target, previous, next);
+        /**
+         * target was added, execute plugin hooks
+         */
+        if (shouldBatchLiveAdds)
+          pendingAfterAppend.push(() =>
+            afterAppend(target, mutation.node.id),
+          );
+        else afterAppend(target, mutation.node.id);
       }
-      /**
-       * target was added, execute plugin hooks
-       */
-      afterAppend(target, mutation.node.id);
 
       /**
        * https://github.com/rrweb-io/rrweb/pull/887
@@ -2051,6 +2121,13 @@ export class Replayer {
         }
       }
     }
+
+    for (const group of stagedRootGroups) {
+      const anchor =
+        group.anchor?.parentNode === group.parent ? group.anchor : null;
+      group.parent.insertBefore(group.fragment, anchor);
+    }
+    for (const callback of pendingAfterAppend) callback();
 
     if (Object.keys(legacy_missingNodeMap).length) {
       Object.assign(this.legacy_missingNodeRetryMap, legacy_missingNodeMap);
