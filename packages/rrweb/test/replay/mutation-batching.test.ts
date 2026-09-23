@@ -156,16 +156,16 @@ describe('large live mutation batching', () => {
       }) as typeof container.insertBefore;
 
       await new Promise((resolve) => setTimeout(resolve, 350));
+      const roots = Array.from(
+        container.querySelectorAll(':scope > [data-index]'),
+      );
       return {
         liveInsertions: container.liveInsertions,
-        rootCount: container.querySelectorAll(':scope > [data-index]').length,
+        rootCount: roots.length,
         childCount: container.querySelectorAll(':scope > [data-index] > span')
           .length,
-        firstIndex:
-          container.querySelector('[data-index]')?.getAttribute('data-index'),
-        lastIndex: container
-          .querySelector(':scope > [data-index]:last-of-type')
-          ?.getAttribute('data-index'),
+        firstIndex: roots[0]?.getAttribute('data-index'),
+        lastIndex: roots.at(-1)?.getAttribute('data-index'),
       };
     });
 
