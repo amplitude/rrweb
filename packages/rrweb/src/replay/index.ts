@@ -2122,12 +2122,10 @@ export class Replayer {
         if (trace) trace.counters.stagedRoots += 1;
         pendingAfterAppendNodes.push(target);
         pendingAfterAppendIds.push(mutation.node.id);
-        if (trace)
-          trace.phases.insertMs += performance.now() - operationStart;
+        if (trace) trace.phases.insertMs += performance.now() - operationStart;
       } else {
         insertNode(parent, target, previous, next);
-        if (trace)
-          trace.phases.insertMs += performance.now() - operationStart;
+        if (trace) trace.phases.insertMs += performance.now() - operationStart;
         /**
          * target was added, execute plugin hooks
          */
