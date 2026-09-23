@@ -55,17 +55,33 @@ Median of 5 runs, headless Chrome (this environment, 2026-09-23).
 
 Below the threshold both arms use the same insertion strategy, so speedup is noise. At and above 200 adds, batched insert count drops to 1 for contiguous root runs.
 
+## Real recording payloads
+
+The synthetic cases above are constructed trees. To check behavior on real data, the 46 incremental events from the 604–609s window of session `679541` (which contains the 3,044-add mutation) were grafted onto a host snapshot and replayed through both arms.
+
+| Arm | `applyMutation` total | Largest mutation | Live inserts | Fragment commits | Detached inserts | Nodes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline | 35.3ms | 12.5ms (3,044 adds) | 6,553 | 0 | 62 | 5,146 |
+| batched | 33.5ms | 12.0ms (3,044 adds) | 619 | 8 | 6,004 | 5,146 |
+
+Resulting DOM is byte-identical between arms.
+
+Batching does what it is designed to do — live insertions drop roughly 10x, and the 21 real roots under parent `659149` collapse into a single fragment commit — but **apply time is unchanged within noise**. That is the honest result on this data.
+
+Two caveats on that measurement: the uploaded events contain no FullSnapshot, so the host DOM and stylesheets are reconstructed rather than real; and nothing in the harness reads layout during apply.
+
 ## How to read this
 
-On inert synthetic nodes the win is small (about 1.2–1.4x on the large trees). That is a floor, not a prediction of production cost: these nodes have no CSS, no table layout, and nothing reads geometry during apply, so the browser coalesces work regardless of how many times `insertBefore` is called.
+Reducing insertion count is not by itself a speedup. Without CSS or forced layout reads, the browser coalesces style and layout until the next frame no matter how many times `insertBefore` is called, so the inert cases and the real-payload run are a wash (roughly 1x–1.3x, within run-to-run noise).
 
-The last two rows are the relevant comparison. Reading layout in `onBuild` turns the per-node path into repeated forced reflow. Batching keeps those reads off the live tree until one fragment commit, which is a 13–22x reduction on these payloads.
+The 13–22x rows are a specific scenario, not a general claim: a plugin reads `offsetHeight` in `onBuild`, so every insertion forces a synchronous reflow. Batching defers those reads until after one fragment commit, which removes the thrash.
 
-That profile matches the production Session Replay trace: an ~8s `applyIncremental` on a mutation with 3,044 adds (21 virtualized table rows, ~145 nodes per row). The synthetic 3,045-add “virtualized rows” case uses the same shape (21 × 144) but not the same CSS or plugins, so it cannot reproduce the 8s number. It does show that the cost that batching removes is live-tree layout work, not node construction.
+So the win depends entirely on whether anything reads layout between insertions during apply. If the embedding player does, batching is a large win; if it does not, expect roughly no change. Before rolling this out, confirm which case the target player is in — a Chrome performance profile showing repeated "Recalculate Style" / "Layout" entries interleaved with insertions during `applyIncremental` is the signal that batching will help.
 
 ## Caveats
 
 - Times are median of 5 runs on this VM; they will move with CPU, Chrome version, and whether the machine is busy.
 - Synthetic markup is `div` + `span`. Production rows include table cells, classes, and stylesheets.
 - `one large subtree` has a single live root even in the baseline, so insert count cannot show a batching win; apply time is still compared.
-- Seek / FullSnapshot rebuild is out of scope. Live play is the path that uses fragments.
+- Seek / FullSnapshot rebuild is out of scope. Live play is the path that uses fragments. If playback feels slow while scrubbing, this change is not involved: seeking runs through the virtual DOM, where batching is disabled.
+- To A/B in a real player, set `liveMutationBatchThreshold: Infinity` to get the original per-node behavior with no other differences.
