@@ -59,10 +59,10 @@ Below the threshold both arms use the same insertion strategy, so speedup is noi
 
 The synthetic cases above are constructed trees. To check behavior on real data, the 46 incremental events from the 604–609s window of session `679541` (which contains the 3,044-add mutation) were grafted onto a host snapshot and replayed through both arms.
 
-| Arm | `applyMutation` total | Largest mutation | Live inserts | Fragment commits | Detached inserts | Nodes |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline | 35.3ms | 12.5ms (3,044 adds) | 6,553 | 0 | 62 | 5,146 |
-| batched | 33.5ms | 12.0ms (3,044 adds) | 619 | 8 | 6,004 | 5,146 |
+| Arm      | `applyMutation` total |    Largest mutation | Live inserts | Fragment commits | Detached inserts | Nodes |
+| -------- | --------------------: | ------------------: | -----------: | ---------------: | ---------------: | ----: |
+| baseline |                35.3ms | 12.5ms (3,044 adds) |        6,553 |                0 |               62 | 5,146 |
+| batched  |                33.5ms | 12.0ms (3,044 adds) |          619 |                8 |            6,004 | 5,146 |
 
 Resulting DOM is byte-identical between arms.
 
