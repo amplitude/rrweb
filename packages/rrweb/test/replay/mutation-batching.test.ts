@@ -464,10 +464,7 @@ describe('large live mutation batching', () => {
         batchedApplyMs: round(batchedApply),
         applyDeltaMs: round(baselineApply - batchedApply),
         applySpeedup: `${round(baselineApply / batchedApply)}x`,
-        baselineInsertMs: round(
-          median(baseline.map((s) => s.liveInsertMs)),
-          3,
-        ),
+        baselineInsertMs: round(median(baseline.map((s) => s.liveInsertMs)), 3),
         batchedInsertMs: round(median(batched.map((s) => s.liveInsertMs)), 3),
         baselineLayoutMs: round(median(baseline.map((s) => s.layoutMs))),
         batchedLayoutMs: round(median(batched.map((s) => s.layoutMs))),
