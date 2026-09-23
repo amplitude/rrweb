@@ -40,18 +40,18 @@ PUPPETEER_HEADLESS=true pnpm --filter @amplitude/rrweb exec vitest run test/repl
 
 Median of 5 runs, headless Chrome (this environment, 2026-09-23).
 
-| Case | Adds | Baseline inserts | Batched inserts | Baseline apply | Batched apply | Speedup |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| below threshold | 20 | 10 | 10 | 0.2ms | 0.2ms | 1x |
-| just below threshold | 198 | 99 | 99 | 1.0ms | 0.6ms | 1.67x |
-| at threshold | 200 | 100 | 1 | 1.5ms | 0.6ms | 2.5x |
-| 200 root-only | 200 | 200 | 1 | 0.9ms | 0.7ms | 1.29x |
-| one large subtree | 251 | 1 | 1 | 1.0ms | 0.8ms | 1.25x |
-| wide forest | 450 | 150 | 1 | 1.4ms | 1.4ms | 1x |
-| virtualized rows | 3,045 | 21 | 1 | 6.5ms | 4.7ms | 1.38x |
-| oversized grid | 8,700 | 60 | 1 | 15.7ms | 13.2ms | 1.19x |
-| virtualized rows, layout read per node | 3,045 | 21 | 1 | 199.4ms | 14.6ms | 13.7x |
-| oversized grid, layout read per node | 8,700 | 60 | 1 | 735.5ms | 33.1ms | 22.2x |
+| Case                                   |  Adds | Baseline inserts | Batched inserts | Baseline apply | Batched apply | Speedup |
+| -------------------------------------- | ----: | ---------------: | --------------: | -------------: | ------------: | ------: |
+| below threshold                        |    20 |               10 |              10 |          0.2ms |         0.2ms |      1x |
+| just below threshold                   |   198 |               99 |              99 |          1.0ms |         0.6ms |   1.67x |
+| at threshold                           |   200 |              100 |               1 |          1.5ms |         0.6ms |    2.5x |
+| 200 root-only                          |   200 |              200 |               1 |          0.9ms |         0.7ms |   1.29x |
+| one large subtree                      |   251 |                1 |               1 |          1.0ms |         0.8ms |   1.25x |
+| wide forest                            |   450 |              150 |               1 |          1.4ms |         1.4ms |      1x |
+| virtualized rows                       | 3,045 |               21 |               1 |          6.5ms |         4.7ms |   1.38x |
+| oversized grid                         | 8,700 |               60 |               1 |         15.7ms |        13.2ms |   1.19x |
+| virtualized rows, layout read per node | 3,045 |               21 |               1 |        199.4ms |        14.6ms |   13.7x |
+| oversized grid, layout read per node   | 8,700 |               60 |               1 |        735.5ms |        33.1ms |   22.2x |
 
 Below the threshold both arms use the same insertion strategy, so speedup is noise. At and above 200 adds, batched insert count drops to 1 for contiguous root runs.
 
