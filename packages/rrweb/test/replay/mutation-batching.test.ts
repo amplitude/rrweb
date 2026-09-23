@@ -108,11 +108,7 @@ describe('large live mutation batching', () => {
       const totalAdds = roots * (1 + childrenPerRoot);
       const expectBatched = totalAdds >= 200;
       const result = await page.evaluate(
-        async (
-          rootCount: number,
-          childCount: number,
-          iterations: number,
-        ) => {
+        async (rootCount: number, childCount: number, iterations: number) => {
           const rrweb = (
             window as unknown as { rrweb: typeof import('../../src') }
           ).rrweb;
@@ -168,11 +164,7 @@ describe('large live mutation batching', () => {
                   id: rootId,
                 },
               });
-              for (
-                let childIndex = 0;
-                childIndex < childCount;
-                childIndex++
-              ) {
+              for (let childIndex = 0; childIndex < childCount; childIndex++) {
                 adds.push({
                   parentId: rootId,
                   nextId: null,
