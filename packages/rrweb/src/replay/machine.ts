@@ -245,9 +245,7 @@ export function createPlayerService(
               addDelay(event, baselineTime);
               const castFn = getCastFn(event, false);
               timer.addAction({
-                doAction: () => {
-                  castFn();
-                },
+                doAction: castFn,
                 delay: event.delay ?? 0,
               });
             }
@@ -399,12 +397,10 @@ export function createPlayerService(
             const isSync = event.timestamp < baselineTime;
             const castFn = getCastFn(event, isSync);
             if (isSync) {
-              castFn();
+              void castFn();
             } else if (timer.isActive()) {
               timer.addAction({
-                doAction: () => {
-                  castFn();
-                },
+                doAction: castFn,
                 delay: event.delay ?? 0,
               });
             }

@@ -780,7 +780,7 @@ export class Replayer {
           // even though it is before startIdx.
           const metaEvt = events.find((e) => e.type === EventType.Meta);
           if (metaEvt) {
-            this.getCastFn(metaEvt, true)();
+            void this.getCastFn(metaEvt, true)();
           }
 
           // Restore DOM state from the cached snapshot, mirroring the
@@ -828,7 +828,7 @@ export class Replayer {
           break;
       }
       const castFn = this.getCastFn(event, true);
-      castFn();
+      void castFn();
     }
   };
 
