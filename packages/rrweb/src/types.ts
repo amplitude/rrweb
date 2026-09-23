@@ -276,6 +276,14 @@ export type MutationTrace = {
     droppedTrees: number;
     legacyMissing: number;
   };
+  slowestBuilds: Array<{
+    ms: number;
+    id: number;
+    type: number;
+    tagName?: string;
+    attributeCount: number;
+    textLength: number;
+  }>;
 };
 
 export type missingNode = {

@@ -1751,6 +1751,14 @@ export class Replayer {
             droppedTrees: 0,
             legacyMissing: 0,
           },
+          slowestBuilds: [] as Array<{
+            ms: number;
+            id: number;
+            type: number;
+            tagName?: string;
+            attributeCount: number;
+            textLength: number;
+          }>,
         }
       : null;
     let phaseStart = performance.now();
@@ -1999,8 +2007,36 @@ export class Replayer {
         afterAppend,
       }) as Node | RRNode;
       if (trace) {
-        trace.phases.buildMs += performance.now() - operationStart;
+        const buildMs = performance.now() - operationStart;
+        trace.phases.buildMs += buildMs;
         trace.counters.built += 1;
+        const serialized = mutation.node;
+        const buildSample = {
+          ms: buildMs,
+          id: serialized.id,
+          type: serialized.type,
+          tagName:
+            serialized.type === NodeType.Element
+              ? serialized.tagName
+              : undefined,
+          attributeCount:
+            serialized.type === NodeType.Element
+              ? Object.keys(serialized.attributes).length
+              : 0,
+          textLength:
+            serialized.type === NodeType.Text
+              ? serialized.textContent.length
+              : 0,
+        };
+        if (trace.slowestBuilds.length < 20) {
+          trace.slowestBuilds.push(buildSample);
+          trace.slowestBuilds.sort((a, b) => b.ms - a.ms);
+        } else if (
+          buildMs > trace.slowestBuilds[trace.slowestBuilds.length - 1].ms
+        ) {
+          trace.slowestBuilds[trace.slowestBuilds.length - 1] = buildSample;
+          trace.slowestBuilds.sort((a, b) => b.ms - a.ms);
+        }
       }
 
       // legacy data, we should not have -1 siblings any more

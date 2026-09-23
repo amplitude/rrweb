@@ -199,6 +199,36 @@
       const timings = [];
       const warnings = [];
       const fullSnapshots = [];
+      const longTasks = [];
+      const frameGaps = [];
+      let performanceObserver = null;
+      let frameHandle = 0;
+      let lastFrameTime = 0;
+
+      function startRuntimeMonitoring() {
+        longTasks.length = 0;
+        frameGaps.length = 0;
+        try {
+          performanceObserver = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              longTasks.push({
+                startTime: entry.startTime,
+                duration: entry.duration,
+              });
+            }
+          });
+          performanceObserver.observe({ entryTypes: ['longtask'] });
+        } catch {
+          performanceObserver = null;
+        }
+        lastFrameTime = performance.now();
+        const frame = (now) => {
+          frameGaps.push(now - lastFrameTime);
+          lastFrameTime = now;
+          frameHandle = requestAnimationFrame(frame);
+        };
+        frameHandle = requestAnimationFrame(frame);
+      }
 
       function formatMs(ms) {
         return Math.round(ms);
@@ -495,6 +525,19 @@
         ]) {
           phases[key] = +sumNested('phases', key).toFixed(2);
         }
+        const measuredPhaseMs = Object.values(phases).reduce(
+          (total, value) => total + value,
+          0,
+        );
+        phases.unaccountedMs = +(
+          sum('ms') - measuredPhaseMs
+        ).toFixed(2);
+        const phasePercent = Object.fromEntries(
+          Object.entries(phases).map(([key, value]) => [
+            key,
+            +((value / sum('ms')) * 100).toFixed(1),
+          ]),
+        );
         const counters = {};
         for (const key of [
           'built',
@@ -523,6 +566,7 @@
           fragmentCommits: sum('fragments'),
           detachedInserts: sum('detached'),
           phases,
+          phasePercent,
           counters,
           topTags: Object.fromEntries(
             Object.entries(mergeCounts('tags')).slice(0, 20),
@@ -532,6 +576,16 @@
           ),
           warnings: [...warnings],
           fullSnapshots: [...fullSnapshots],
+          longTasks: [...longTasks],
+          frameGaps: {
+            count: frameGaps.length,
+            over50ms: frameGaps.filter((ms) => ms > 50).length,
+            worst: frameGaps
+              .slice()
+              .sort((a, b) => b - a)
+              .slice(0, 20)
+              .map((ms) => +ms.toFixed(1)),
+          },
           slowest: live
             .slice()
             .sort((a, b) => b.ms - a.ms)
@@ -561,6 +615,7 @@
         };
         console.table([summary]);
         console.log('core phases', summary.phases);
+        console.log('core phase %', summary.phasePercent);
         console.log('core counters', summary.counters);
         console.log('top tags', summary.topTags);
         console.log('top attributes', summary.topAttributes);
@@ -585,6 +640,10 @@
       }
 
       function destroy() {
+        if (performanceObserver) performanceObserver.disconnect();
+        performanceObserver = null;
+        if (frameHandle) cancelAnimationFrame(frameHandle);
+        frameHandle = 0;
         if (clockTimer) clearInterval(clockTimer);
         if (replayer) {
           try {
@@ -611,6 +670,7 @@
           throw new Error('Load events first');
         }
         destroy();
+        startRuntimeMonitoring();
         patchApplyMutation();
         const plugins = [];
         if (layoutRead.checked) {
