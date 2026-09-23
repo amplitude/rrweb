@@ -70,6 +70,21 @@ Batching does what it is designed to do — live insertions drop roughly 10x, an
 
 Two caveats on that measurement: the uploaded events contain no FullSnapshot, so the host DOM and stylesheets are reconstructed rather than real; and nothing in the harness reads layout during apply.
 
+## Where the time actually goes
+
+The harness splits each `applyMutation` into time spent inside DOM insertion calls (measured by patching the replay iframe's `Node.prototype`) and everything else — building elements, setting attributes, masking, mirror bookkeeping. Real 604–609s events, live path:
+
+| Arm | total | insertion | build/other | live inserts | fragment commits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline | 40.3ms | 3.2ms | 37.1ms | 6,550 | 0 |
+| batched | 40.6ms | 0.9ms | 39.7ms | 616 | 8 |
+
+For the 3,044-add mutation on its own: baseline 14.1ms total with 1.5ms in insertion; batched 16.8ms total with 0.4ms in insertion.
+
+**Insertion is about 8% of apply time.** Batching removes most of that 8% — a real reduction, and the DOM-call count drops from 6,550 to 616 — but it cannot move the total, because roughly 92% of the cost is constructing nodes, not attaching them. Identical end-to-end timings between the two arms are the expected result, not a sign the flag failed to engage; check the `live inserts` and `fragments` columns to confirm the arms differ.
+
+This bounds what this optimization can ever be worth on this workload. Making the 8s stall meaningfully shorter requires attacking node construction, reducing how many nodes arrive, or not doing the work synchronously — not reducing insertion count.
+
 ## How to read this
 
 Reducing insertion count is not by itself a speedup. Without CSS or forced layout reads, the browser coalesces style and layout until the next frame no matter how many times `insertBefore` is called, so the inert cases and the real-payload run are a wash (roughly 1x–1.3x, within run-to-run noise).
@@ -92,6 +107,8 @@ That serves:
 - `http://127.0.0.1:4177/?batch=off` — same build, per-node inserts (`Infinity`)
 
 The player patches `applyMutation` with `performance.mark` / `performance.measure` named `rrweb.applyMutation … adds live|seek`, so a Chrome Performance recording of the **parent** page shows each mutation as its own measure. Use **Jump then play live** at ~24s so the stall is applied on the live path (batching is off during seek).
+
+The footer table breaks each mutation into total / insertion / build time plus live insert and fragment counts, and **Log summary** (or `window.__profileReport()`) prints run totals. Compare `insertMs` against `buildMs` before assuming insertion is the bottleneck, and use the insert counts to confirm the two arms really differ.
 
 Optional query flags: `skipInactive=1`, `layoutRead=1` (reads `offsetHeight` in `onBuild`), `t=24`, `speed=1`. If no path is passed, drop a JSON file in the UI, or put one at `packages/rrweb/temp/session.json`.
 

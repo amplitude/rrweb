@@ -143,6 +143,7 @@
       <button id="play" class="primary">Play</button>
       <button id="pause">Pause</button>
       <button id="jumpPlay">Jump then play live</button>
+      <button id="report">Log summary</button>
       <span id="clock" class="stat">t=—</span>
       <a id="offLink" href="?batch=off">open baseline tab</a>
       <a id="onLink" href="?batch=on">open batched tab</a>
@@ -157,7 +158,11 @@
       <table>
         <thead>
           <tr>
-            <th>ms</th>
+            <th>total ms</th>
+            <th>insert ms</th>
+            <th>build ms</th>
+            <th>live inserts</th>
+            <th>fragments</th>
             <th>adds</th>
             <th>removes</th>
             <th>path</th>
@@ -250,40 +255,142 @@
         }
       }
 
+      // Per-mutation DOM counters. The replay tree lives in an iframe with its
+      // own Node prototype, and the document is replaced on snapshot rebuild,
+      // so the patch is re-applied lazily.
+      const dom = { insertMs: 0, live: 0, fragments: 0, detached: 0 };
+
+      function patchFrameNode(replayerInstance) {
+        const frameWin =
+          replayerInstance.iframe && replayerInstance.iframe.contentWindow;
+        if (!frameWin || frameWin.__profilePatched) return;
+        const proto = frameWin.Node.prototype;
+        const originalInsertBefore = proto.insertBefore;
+        const originalAppendChild = proto.appendChild;
+        const record = (parent, node, run) => {
+          const connected = parent.isConnected;
+          const start = performance.now();
+          const result = run();
+          if (connected) {
+            dom.insertMs += performance.now() - start;
+            dom.live += 1;
+            if (node && node.nodeType === 11) dom.fragments += 1;
+          } else {
+            dom.detached += 1;
+          }
+          return result;
+        };
+        proto.insertBefore = function (node, ref) {
+          return record(this, node, () =>
+            originalInsertBefore.call(this, node, ref),
+          );
+        };
+        proto.appendChild = function (node) {
+          return record(this, node, () => originalAppendChild.call(this, node));
+        };
+        frameWin.__profilePatched = true;
+      }
+
       function patchApplyMutation() {
         const proto = rrweb.Replayer.prototype;
         if (proto.__profilePatched) return;
         const original = proto.applyMutation;
         proto.applyMutation = function (data, isSync) {
+          patchFrameNode(this);
           const adds = (data && data.adds && data.adds.length) || 0;
           const removes = (data && data.removes && data.removes.length) || 0;
           const label = `rrweb.applyMutation ${adds} adds ${
             isSync ? 'seek' : 'live'
           }`;
+          dom.insertMs = 0;
+          dom.live = 0;
+          dom.fragments = 0;
+          dom.detached = 0;
           performance.mark(`${label}:start`);
           const start = performance.now();
           const result = original.call(this, data, isSync);
           const ms = performance.now() - start;
           performance.measure(label, `${label}:start`);
           const replayMs = this.getCurrentTime ? this.getCurrentTime() : 0;
-          timings.push({ ms, adds, removes, isSync, replayMs });
+          const sample = {
+            ms,
+            insertMs: dom.insertMs,
+            // Everything that is not a DOM insertion: building nodes,
+            // attributes, masking, mirror bookkeeping.
+            buildMs: ms - dom.insertMs,
+            live: dom.live,
+            fragments: dom.fragments,
+            detached: dom.detached,
+            adds,
+            removes,
+            isSync,
+            replayMs,
+          };
+          timings.push(sample);
           if (adds >= 50 || ms >= 8) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${ms.toFixed(1)}</td><td>${adds}</td><td>${removes}</td><td class="${
-              isSync ? 'seek' : 'live'
-            }">${isSync ? 'seek/sync' : 'live'}</td><td>${formatTime(
-              replayMs,
-            )}</td>`;
+            tr.innerHTML =
+              `<td>${ms.toFixed(1)}</td>` +
+              `<td>${sample.insertMs.toFixed(1)}</td>` +
+              `<td>${sample.buildMs.toFixed(1)}</td>` +
+              `<td>${sample.live}</td>` +
+              `<td>${sample.fragments}</td>` +
+              `<td>${adds}</td>` +
+              `<td>${removes}</td>` +
+              `<td class="${isSync ? 'seek' : 'live'}">${
+                isSync ? 'seek/sync' : 'live'
+              }</td>` +
+              `<td>${formatTime(replayMs)}</td>`;
             rowsEl.prepend(tr);
             while (rowsEl.rows.length > 80) rowsEl.deleteRow(-1);
           }
           if (adds >= 200) {
-            console.log(label, ms.toFixed(1) + 'ms', 'sync=', isSync);
+            console.log(
+              label,
+              `total ${ms.toFixed(1)}ms`,
+              `insert ${sample.insertMs.toFixed(1)}ms`,
+              `build ${sample.buildMs.toFixed(1)}ms`,
+              `liveInserts ${sample.live}`,
+              `fragments ${sample.fragments}`,
+            );
           }
           return result;
         };
         proto.__profilePatched = true;
       }
+
+      function report() {
+        const live = timings.filter((t) => !t.isSync);
+        if (!live.length) {
+          console.log('no live mutations recorded yet');
+          return;
+        }
+        const sum = (key) => live.reduce((total, t) => total + t[key], 0);
+        const summary = {
+          arm: batchSelect.value === 'off' ? 'baseline (Infinity)' : 'batched (200)',
+          liveMutations: live.length,
+          totalMs: +sum('ms').toFixed(1),
+          insertMs: +sum('insertMs').toFixed(1),
+          buildMs: +sum('buildMs').toFixed(1),
+          liveInserts: sum('live'),
+          fragmentCommits: sum('fragments'),
+          detachedInserts: sum('detached'),
+          slowest: live
+            .slice()
+            .sort((a, b) => b.ms - a.ms)
+            .slice(0, 5)
+            .map(
+              (t) =>
+                `${t.ms.toFixed(1)}ms (${t.adds} adds, insert ${t.insertMs.toFixed(
+                  1,
+                )}ms, ${t.live} live inserts)`,
+            ),
+        };
+        console.table([summary]);
+        console.log(summary.slowest);
+        return summary;
+      }
+      window.__profileReport = report;
 
       function destroy() {
         if (clockTimer) clearInterval(clockTimer);
@@ -375,6 +482,7 @@
         replayer.pause(offset);
         replayer.play(offset);
       });
+      $('report').addEventListener('click', () => report());
       loadSessionBtn.addEventListener('click', () => {
         loadFromUrl('/session.json').catch((error) => alert(error.message));
       });
