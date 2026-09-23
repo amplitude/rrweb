@@ -1702,6 +1702,15 @@ export class Replayer {
     }
   }
 
+  private afterAppendStagedNode(node: Node | RRNode, id: number) {
+    // Skip the plugin onBuild callback for virtual dom
+    if (this.usingVirtualDom) return;
+    applyDialogToTopLevel(node);
+    for (const plugin of this.config.plugins || []) {
+      if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
+    }
+  }
+
   /**
    * Apply the mutation to the virtual dom or the real dom.
    * @param d - The mutation data.
@@ -1791,7 +1800,6 @@ export class Replayer {
       ...this.legacy_missingNodeRetryMap,
     };
     const queue: addedNodeMutation[] = [];
-    const addedNodeIds = new Set(d.adds.map((mutation) => mutation.node.id));
     const shouldBatchLiveAdds =
       !this.usingVirtualDom &&
       d.adds.length >= this.config.liveMutationBatchThreshold &&
@@ -1806,6 +1814,11 @@ export class Replayer {
             mutation.node.tagName === 'iframe'
           ),
       );
+    // Only needed to tell roots from descendants while staging, so it is not
+    // worth allocating for the many small mutations in a typical recording.
+    const addedNodeIds = shouldBatchLiveAdds
+      ? new Set(d.adds.map((mutation) => mutation.node.id))
+      : null;
     type StagedRootGroup = {
       parent: Node | ShadowRoot;
       fragment: DocumentFragment;
@@ -1813,7 +1826,10 @@ export class Replayer {
     };
     const stagedRootGroups: StagedRootGroup[] = [];
     const stagedNodeGroups = new Map<Node, StagedRootGroup>();
-    const pendingAfterAppend: Array<() => void> = [];
+    // Parallel arrays rather than one closure per added node: a single large
+    // mutation can carry thousands of adds.
+    const pendingAfterAppendNodes: Array<Node | RRNode> = [];
+    const pendingAfterAppendIds: number[] = [];
 
     const insertNode = (
       parent: Node | ShadowRoot | RRNode,
@@ -1910,14 +1926,8 @@ export class Replayer {
         );
         return;
       }
-      const afterAppend = (node: Node | RRNode, id: number) => {
-        // Skip the plugin onBuild callback for virtual dom
-        if (this.usingVirtualDom) return;
-        applyDialogToTopLevel(node);
-        for (const plugin of this.config.plugins || []) {
-          if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
-        }
-      };
+      const afterAppend = (node: Node | RRNode, id: number) =>
+        this.afterAppendStagedNode(node, id);
 
       const target = buildNodeWithSN(mutation.node, {
         doc: targetDoc as Document, // can be Document or RRDocument
@@ -2013,7 +2023,7 @@ export class Replayer {
 
       const shouldStageRoot =
         shouldBatchLiveAdds &&
-        !addedNodeIds.has(mutation.parentId) &&
+        !addedNodeIds?.has(mutation.parentId) &&
         parentSn?.type !== NodeType.Document;
       if (shouldStageRoot) {
         const realTarget = target as Node;
@@ -2046,15 +2056,17 @@ export class Replayer {
           group.fragment.appendChild(realTarget);
         }
         stagedNodeGroups.set(realTarget, group);
-        pendingAfterAppend.push(() => afterAppend(target, mutation.node.id));
+        pendingAfterAppendNodes.push(target);
+        pendingAfterAppendIds.push(mutation.node.id);
       } else {
         insertNode(parent, target, previous, next);
         /**
          * target was added, execute plugin hooks
          */
-        if (shouldBatchLiveAdds)
-          pendingAfterAppend.push(() => afterAppend(target, mutation.node.id));
-        else afterAppend(target, mutation.node.id);
+        if (shouldBatchLiveAdds) {
+          pendingAfterAppendNodes.push(target);
+          pendingAfterAppendIds.push(mutation.node.id);
+        } else afterAppend(target, mutation.node.id);
       }
 
       /**
@@ -2131,7 +2143,12 @@ export class Replayer {
         group.anchor?.parentNode === group.parent ? group.anchor : null;
       group.parent.insertBefore(group.fragment, anchor);
     }
-    for (const callback of pendingAfterAppend) callback();
+    for (let i = 0; i < pendingAfterAppendNodes.length; i++) {
+      this.afterAppendStagedNode(
+        pendingAfterAppendNodes[i],
+        pendingAfterAppendIds[i],
+      );
+    }
 
     if (Object.keys(legacy_missingNodeMap).length) {
       Object.assign(this.legacy_missingNodeRetryMap, legacy_missingNodeMap);
