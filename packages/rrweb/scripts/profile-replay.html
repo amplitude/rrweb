@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>rrweb live-mutation profile harness</title>
+    <link rel="stylesheet" href="/dist/style.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111318;
+        --panel: #1b1e27;
+        --line: #2c3140;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --accent: #8ab4f8;
+        --warn: #fdd663;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      body {
+        display: grid;
+        grid-template-rows: auto auto auto 1fr auto;
+        min-height: 100%;
+      }
+      header,
+      footer {
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        padding: 8px 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+      }
+      footer {
+        border-bottom: 0;
+        border-top: 1px solid var(--line);
+        max-height: 280px;
+        overflow: auto;
+      }
+      label,
+      .stat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      button,
+      select,
+      input[type='file'],
+      input[type='number'] {
+        background: #2a2f3a;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 8px;
+      }
+      button.primary {
+        background: #1a4d8c;
+        border-color: #3c7dd9;
+      }
+      #player {
+        background: #000;
+        overflow: auto;
+        min-height: 0;
+      }
+      #meta {
+        padding: 6px 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      #meta.warn {
+        color: var(--warn);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 3px 8px;
+        border-bottom: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+      }
+      .live {
+        color: #81c995;
+      }
+      .seek {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      #transport {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+      }
+      #scrub {
+        flex: 1;
+        min-width: 220px;
+        accent-color: var(--accent);
+        height: 22px;
+      }
+      #scrub:disabled {
+        opacity: 0.4;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .mono {
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+      }
+      #skipFlag {
+        color: var(--warn);
+      }
+      #playPause {
+        min-width: 86px;
+      }
+      /* The replay iframe would otherwise swallow the drop. */
+      body.dragging #player {
+        pointer-events: none;
+      }
+      body.dragging::after {
+        content: 'Drop rrweb JSON files (chunks are merged by timestamp)';
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(17, 19, 24, 0.85);
+        border: 2px dashed var(--accent);
+        color: var(--accent);
+        font-size: 16px;
+        z-index: 10;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Live mutation profile harness</strong>
+      <label>
+        Events
+        <input
+          id="file"
+          type="file"
+          multiple
+          accept="application/json,.json,.ndjson,.txt"
+        />
+      </label>
+      <label>
+        Arm
+        <select id="batch">
+          <option value="on">batched (threshold 200)</option>
+          <option value="off">baseline (threshold Infinity)</option>
+        </select>
+      </label>
+      <label>
+        <input id="skipInactive" type="checkbox" />
+        skipInactive
+      </label>
+      <label>
+        <input id="layoutRead" type="checkbox" />
+        force layout in onBuild
+      </label>
+      <label>
+        Speed
+        <input id="speed" type="number" min="1" max="16" value="1" />
+      </label>
+      <label>
+        Jump to (s)
+        <input id="jump" type="number" min="0" step="0.1" value="24" />
+      </label>
+      <button id="loadSession" hidden>Load server session</button>
+      <button id="rebuild">Rebuild player</button>
+      <button id="jumpPlay">Jump then play live</button>
+      <button id="report">Log summary</button>
+      <button id="download">Download report JSON</button>
+      <a id="offLink" href="?batch=off">open baseline tab</a>
+      <a id="onLink" href="?batch=on">open batched tab</a>
+    </header>
+    <div id="meta">
+      Pick or drop one or more rrweb JSON files (Meta + FullSnapshot +
+      incrementals). Split exports are merged and sorted by timestamp. Chrome
+      Performance will show <code>rrweb.applyMutation</code> marks. Record the
+      parent page, not the iframe.
+    </div>
+    <div id="transport">
+      <button id="playPause" class="primary" disabled>Play</button>
+      <button id="stepBack" title="back 5s" disabled>-5s</button>
+      <button id="stepFwd" title="forward 5s" disabled>+5s</button>
+      <input
+        id="scrub"
+        type="range"
+        min="0"
+        max="0"
+        value="0"
+        step="10"
+        disabled
+      />
+      <span id="clock" class="stat mono">0:00.0 / 0:00.0</span>
+      <span id="skipFlag" class="stat" hidden>skipping inactivity</span>
+    </div>
+    <div id="player"></div>
+    <footer>
+      <table>
+        <thead>
+          <tr>
+            <th>total ms</th>
+            <th>insert ms</th>
+            <th>build ms</th>
+            <th>live inserts</th>
+            <th>fragments</th>
+            <th>adds</th>
+            <th>removes</th>
+            <th>path</th>
+            <th>replay t</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </footer>
+    <script src="/dist/rrweb.umd.cjs"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const $ = (id) => document.getElementById(id);
+      const batchSelect = $('batch');
+      const skipInactive = $('skipInactive');
+      const layoutRead = $('layoutRead');
+      const speedInput = $('speed');
+      const jumpInput = $('jump');
+      const metaEl = $('meta');
+      const rowsEl = $('rows');
+      const clockEl = $('clock');
+      const loadSessionBtn = $('loadSession');
+      const playPauseBtn = $('playPause');
+      const stepBackBtn = $('stepBack');
+      const stepFwdBtn = $('stepFwd');
+      const scrub = $('scrub');
+      const skipFlag = $('skipFlag');
+      const naturalOrder = new Intl.Collator(undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+
+      batchSelect.value = params.get('batch') === 'off' ? 'off' : 'on';
+      skipInactive.checked = params.get('skipInactive') === '1';
+      layoutRead.checked = params.get('layoutRead') === '1';
+      if (params.get('speed')) speedInput.value = params.get('speed');
+      if (params.get('t')) jumpInput.value = params.get('t');
+
+      let events = [];
+      let replayer = null;
+      let clockTimer = null;
+      let totalTime = 0;
+      let playing = false;
+      let scrubbing = false;
+      let resumeAfterScrub = false;
+      let sourceLabel = '';
+      // Authoritative playhead. getCurrentTime() is baselineTime-relative and
+      // returns a large negative number until the first seek, so the old
+      // play(getCurrentTime()) seeked to nonsense and nothing ever played.
+      let position = 0;
+      let skipTimer = null;
+      let lastTickWall = 0;
+      let lastTickPosition = 0;
+      const timings = [];
+      const warnings = [];
+      const fullSnapshots = [];
+      const longTasks = [];
+      const frameGaps = [];
+      let performanceObserver = null;
+      let frameHandle = 0;
+      let lastFrameTime = 0;
+
+      function startRuntimeMonitoring() {
+        longTasks.length = 0;
+        frameGaps.length = 0;
+        try {
+          performanceObserver = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              longTasks.push({
+                startTime: entry.startTime,
+                duration: entry.duration,
+              });
+            }
+          });
+          performanceObserver.observe({ entryTypes: ['longtask'] });
+        } catch {
+          performanceObserver = null;
+        }
+        lastFrameTime = performance.now();
+        const frame = (now) => {
+          frameGaps.push(now - lastFrameTime);
+          lastFrameTime = now;
+          frameHandle = requestAnimationFrame(frame);
+        };
+        frameHandle = requestAnimationFrame(frame);
+      }
+
+      function formatMs(ms) {
+        return Math.round(ms);
+      }
+      function formatTime(ms) {
+        const s = ms / 1000;
+        const m = Math.floor(s / 60);
+        const rem = (s % 60).toFixed(1);
+        return `${m}:${rem.padStart(4, '0')}`;
+      }
+
+      function summarize(list) {
+        const types = { 2: 0, 3: 0, 4: 0 };
+        let maxAdds = 0;
+        let large = 0;
+        let mutations = 0;
+        for (const event of list) {
+          types[event.type] = (types[event.type] || 0) + 1;
+          if (event.type === 3 && event.data && event.data.source === 0) {
+            mutations += 1;
+            const adds = (event.data.adds || []).length;
+            if (adds > maxAdds) maxAdds = adds;
+            if (adds >= 200) large += 1;
+          }
+        }
+        const start = list[0]?.timestamp;
+        const end = list[list.length - 1]?.timestamp;
+        const duration = start && end ? end - start : 0;
+        const firstSnapshot = list.findIndex((event) => event.type === 2);
+        const firstIncremental = list.findIndex((event) => event.type === 3);
+        // Incrementals ahead of the first FullSnapshot mean the head chunk is
+        // missing; everything before the snapshot replays against nothing.
+        const orphanedHead =
+          firstIncremental !== -1 &&
+          (firstSnapshot === -1 || firstIncremental < firstSnapshot);
+        return {
+          types,
+          maxAdds,
+          large,
+          mutations,
+          duration,
+          orphanedHead,
+          count: list.length,
+        };
+      }
+
+      function isEvent(value) {
+        return (
+          value &&
+          typeof value === 'object' &&
+          typeof value.type === 'number' &&
+          typeof value.timestamp === 'number'
+        );
+      }
+
+      function normalize(raw) {
+        if (Array.isArray(raw)) {
+          // fast path: a plain event array, avoids copying big sessions
+          return raw.every(isEvent) ? raw : raw.flatMap(normalize);
+        }
+        if (isEvent(raw)) return [raw];
+        if (raw && Array.isArray(raw.events)) return raw.events;
+        if (raw && raw.data && Array.isArray(raw.data.events))
+          return raw.data.events;
+        throw new Error('JSON is not an rrweb event array');
+      }
+
+      // Chunked exports arrive as a JSON array, an {events}/{data.events}
+      // envelope, or newline-delimited JSON with one value per line.
+      function parseEventFile(text, name) {
+        const trimmed = text.trim();
+        if (!trimmed) throw new Error(`${name} is empty`);
+        try {
+          return normalize(JSON.parse(trimmed));
+        } catch (jsonError) {
+          const lines = trimmed.split('\n').filter((line) => line.trim());
+          if (lines.length < 2) throw new Error(`${name}: ${jsonError.message}`);
+          const collected = [];
+          lines.forEach((line, index) => {
+            let value;
+            try {
+              value = JSON.parse(line);
+            } catch (lineError) {
+              throw new Error(
+                `${name} line ${index + 1}: ${lineError.message}`,
+              );
+            }
+            for (const event of normalize(value)) collected.push(event);
+          });
+          return collected;
+        }
+      }
+
+      /**
+       * Merge split exports. Parts are ordered by their first timestamp, then
+       * the whole list is stably sorted so that events recorded in the same
+       * millisecond keep the order the recorder emitted them in. Overlapping
+       * chunks are deduped, but only against events sharing a timestamp so a
+       * legitimate repeat (e.g. an identical scroll later on) is kept.
+       */
+      function mergeParts(parts) {
+        const usable = parts.filter((part) => part.events.length);
+        if (!usable.length) throw new Error('No events found in those files');
+        usable.sort(
+          (a, b) => a.events[0].timestamp - b.events[0].timestamp,
+        );
+        const merged = [];
+        for (const part of usable) {
+          for (const event of part.events) merged.push(event);
+        }
+        merged.sort((a, b) => a.timestamp - b.timestamp);
+
+        const deduped = [];
+        let duplicates = 0;
+        for (let i = 0; i < merged.length; ) {
+          let end = i;
+          while (
+            end + 1 < merged.length &&
+            merged[end + 1].timestamp === merged[i].timestamp
+          ) {
+            end += 1;
+          }
+          if (end === i) {
+            deduped.push(merged[i]);
+          } else {
+            const seen = new Set();
+            for (let k = i; k <= end; k++) {
+              const key = JSON.stringify(merged[k]);
+              if (seen.has(key)) {
+                duplicates += 1;
+                continue;
+              }
+              seen.add(key);
+              deduped.push(merged[k]);
+            }
+          }
+          i = end + 1;
+        }
+        return { events: deduped, duplicates, parts: usable };
+      }
+
+      function applyParts(parts) {
+        const result = mergeParts(parts);
+        events = result.events;
+        const names = result.parts.map((part) => part.name);
+        sourceLabel =
+          names.length === 1
+            ? names[0]
+            : `${names.length} files: ${names.join(', ')}`;
+        if (result.duplicates) {
+          sourceLabel += ` · ${result.duplicates} duplicate events dropped`;
+        }
+        build();
+      }
+
+      function renderMeta(list, extra = '') {
+        const summary = summarize(list);
+        const missingSnapshot = !summary.types[2];
+        metaEl.className = missingSnapshot ? 'warn' : '';
+        metaEl.textContent = [
+          `${summary.count} events`,
+          `Meta ${summary.types[4] || 0}`,
+          `FullSnapshot ${summary.types[2] || 0}`,
+          `incrementals ${summary.types[3] || 0}`,
+          `mutations ${summary.mutations}`,
+          `adds≥200 ${summary.large}`,
+          `max adds ${summary.maxAdds}`,
+          `duration ${formatTime(summary.duration)}`,
+          extra,
+        ].join(' · ');
+        if (missingSnapshot) {
+          metaEl.textContent +=
+            ' · WARNING: no FullSnapshot. This is not a real replay; graft or export the full session.';
+        } else if (summary.orphanedHead) {
+          metaEl.className = 'warn';
+          metaEl.textContent +=
+            ' · WARNING: incremental events precede the first FullSnapshot. A leading chunk is probably missing.';
+        }
+      }
+
+      // Per-mutation DOM counters. The replay tree lives in an iframe with its
+      // own Node prototype, and the document is replaced on snapshot rebuild,
+      // so the patch is re-applied lazily.
+      const dom = {
+        insertMs: 0,
+        createMs: 0,
+        attributeMs: 0,
+        live: 0,
+        fragments: 0,
+        detached: 0,
+        creates: 0,
+        attributeSets: 0,
+        tags: {},
+        attributes: {},
+      };
+      let lastCoreTrace = null;
+
+      function patchFrameNode(replayerInstance) {
+        const frameWin =
+          replayerInstance.iframe && replayerInstance.iframe.contentWindow;
+        if (!frameWin || frameWin.__profilePatched) return;
+        const proto = frameWin.Node.prototype;
+        const documentProto = frameWin.Document.prototype;
+        const elementProto = frameWin.Element.prototype;
+        const originalInsertBefore = proto.insertBefore;
+        const originalAppendChild = proto.appendChild;
+        const originalCreateElement = documentProto.createElement;
+        const originalCreateElementNS = documentProto.createElementNS;
+        const originalCreateTextNode = documentProto.createTextNode;
+        const originalSetAttribute = elementProto.setAttribute;
+        const originalSetAttributeNS = elementProto.setAttributeNS;
+        const timeApi = (bucket, run) => {
+          const start = performance.now();
+          const result = run();
+          dom[bucket] += performance.now() - start;
+          return result;
+        };
+        const record = (parent, node, run) => {
+          const connected = parent.isConnected;
+          const start = performance.now();
+          const result = run();
+          if (connected) {
+            dom.insertMs += performance.now() - start;
+            dom.live += 1;
+            if (node && node.nodeType === 11) dom.fragments += 1;
+          } else {
+            dom.detached += 1;
+          }
+          return result;
+        };
+        proto.insertBefore = function (node, ref) {
+          return record(this, node, () =>
+            originalInsertBefore.call(this, node, ref),
+          );
+        };
+        proto.appendChild = function (node) {
+          return record(this, node, () => originalAppendChild.call(this, node));
+        };
+        documentProto.createElement = function (tag, options) {
+          dom.creates += 1;
+          dom.tags[tag] = (dom.tags[tag] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateElement.call(this, tag, options),
+          );
+        };
+        documentProto.createElementNS = function (namespace, tag, options) {
+          dom.creates += 1;
+          dom.tags[tag] = (dom.tags[tag] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateElementNS.call(this, namespace, tag, options),
+          );
+        };
+        documentProto.createTextNode = function (text) {
+          dom.creates += 1;
+          dom.tags['#text'] = (dom.tags['#text'] || 0) + 1;
+          return timeApi('createMs', () =>
+            originalCreateTextNode.call(this, text),
+          );
+        };
+        elementProto.setAttribute = function (name, value) {
+          dom.attributeSets += 1;
+          dom.attributes[name] = (dom.attributes[name] || 0) + 1;
+          return timeApi('attributeMs', () =>
+            originalSetAttribute.call(this, name, value),
+          );
+        };
+        elementProto.setAttributeNS = function (namespace, name, value) {
+          dom.attributeSets += 1;
+          dom.attributes[name] = (dom.attributes[name] || 0) + 1;
+          return timeApi('attributeMs', () =>
+            originalSetAttributeNS.call(this, namespace, name, value),
+          );
+        };
+        frameWin.__profilePatched = true;
+      }
+
+      function patchApplyMutation() {
+        const proto = rrweb.Replayer.prototype;
+        if (proto.__profilePatched) return;
+        const originalRebuild = proto.rebuildFullSnapshot;
+        proto.rebuildFullSnapshot = function (event, isSync) {
+          const label = `rrweb.rebuildFullSnapshot ${
+            isSync ? 'seek' : 'poster'
+          }`;
+          performance.mark(`${label}:start`);
+          const start = performance.now();
+          const result = originalRebuild.call(this, event, isSync);
+          const ms = performance.now() - start;
+          performance.measure(label, `${label}:start`);
+          fullSnapshots.push({
+            ms,
+            isSync: Boolean(isSync),
+            timestamp: event.timestamp,
+          });
+          console.log(label, `${ms.toFixed(1)}ms`);
+          return result;
+        };
+        const original = proto.applyMutation;
+        proto.applyMutation = function (data, isSync) {
+          patchFrameNode(this);
+          const adds = (data && data.adds && data.adds.length) || 0;
+          const removes = (data && data.removes && data.removes.length) || 0;
+          const label = `rrweb.applyMutation ${adds} adds ${
+            isSync ? 'seek' : 'live'
+          }`;
+          dom.insertMs = 0;
+          dom.createMs = 0;
+          dom.attributeMs = 0;
+          dom.live = 0;
+          dom.fragments = 0;
+          dom.detached = 0;
+          dom.creates = 0;
+          dom.attributeSets = 0;
+          dom.tags = {};
+          dom.attributes = {};
+          lastCoreTrace = null;
+          performance.mark(`${label}:start`);
+          const start = performance.now();
+          const result = original.call(this, data, isSync);
+          const ms = performance.now() - start;
+          performance.measure(label, `${label}:start`);
+          const replayMs = this.getCurrentTime ? this.getCurrentTime() : 0;
+          const sample = {
+            ms,
+            insertMs: dom.insertMs,
+            // Everything that is not a DOM insertion: building nodes,
+            // attributes, masking, mirror bookkeeping.
+            buildMs: ms - dom.insertMs,
+            live: dom.live,
+            fragments: dom.fragments,
+            detached: dom.detached,
+            createMs: dom.createMs,
+            attributeMs: dom.attributeMs,
+            creates: dom.creates,
+            attributeSets: dom.attributeSets,
+            tags: { ...dom.tags },
+            attributeNames: { ...dom.attributes },
+            core: lastCoreTrace,
+            adds,
+            removes,
+            isSync,
+            replayMs,
+          };
+          timings.push(sample);
+          if (adds >= 50 || ms >= 8) {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              `<td>${ms.toFixed(1)}</td>` +
+              `<td>${sample.insertMs.toFixed(1)}</td>` +
+              `<td>${sample.buildMs.toFixed(1)}</td>` +
+              `<td>${sample.live}</td>` +
+              `<td>${sample.fragments}</td>` +
+              `<td>${adds}</td>` +
+              `<td>${removes}</td>` +
+              `<td class="${isSync ? 'seek' : 'live'}">${
+                isSync ? 'seek/sync' : 'live'
+              }</td>` +
+              `<td>${formatTime(replayMs)}</td>`;
+            rowsEl.prepend(tr);
+            while (rowsEl.rows.length > 80) rowsEl.deleteRow(-1);
+          }
+          if (adds >= 200) {
+            console.log(
+              label,
+              `total ${ms.toFixed(1)}ms`,
+              `insert ${sample.insertMs.toFixed(1)}ms`,
+              `build ${sample.buildMs.toFixed(1)}ms`,
+              `create ${sample.createMs.toFixed(1)}ms`,
+              `attrs ${sample.attributeMs.toFixed(1)}ms`,
+              `liveInserts ${sample.live}`,
+              `fragments ${sample.fragments}`,
+            );
+          }
+          return result;
+        };
+        proto.__profilePatched = true;
+      }
+
+      function report() {
+        const live = timings.filter((t) => !t.isSync);
+        if (!live.length) {
+          console.log('no live mutations recorded yet');
+          return;
+        }
+        const sum = (key) => live.reduce((total, t) => total + t[key], 0);
+        const sumNested = (parent, key) =>
+          live.reduce(
+            (total, t) => total + (t.core?.[parent]?.[key] || 0),
+            0,
+          );
+        const mergeCounts = (key) => {
+          const counts = {};
+          for (const timing of live) {
+            for (const [name, count] of Object.entries(timing[key] || {})) {
+              counts[name] = (counts[name] || 0) + count;
+            }
+          }
+          return Object.fromEntries(
+            Object.entries(counts).sort((a, b) => b[1] - a[1]),
+          );
+        };
+        const phases = {};
+        for (const key of [
+          'virtualDomSetupMs',
+          'removesMs',
+          'setupMs',
+          'lookupMs',
+          'buildMs',
+          'insertMs',
+          'resolveQueueMs',
+          'fragmentFlushMs',
+          'afterAppendMs',
+          'textsMs',
+          'attributesMs',
+        ]) {
+          phases[key] = +sumNested('phases', key).toFixed(2);
+        }
+        const measuredPhaseMs = Object.values(phases).reduce(
+          (total, value) => total + value,
+          0,
+        );
+        phases.unaccountedMs = +(
+          sum('ms') - measuredPhaseMs
+        ).toFixed(2);
+        const phasePercent = Object.fromEntries(
+          Object.entries(phases).map(([key, value]) => [
+            key,
+            +((value / sum('ms')) * 100).toFixed(1),
+          ]),
+        );
+        const counters = {};
+        for (const key of [
+          'built',
+          'stagedRoots',
+          'fragmentGroups',
+          'queuedMissingParent',
+          'queuedMissingNext',
+          'skippedMissingRoot',
+          'resolvedTrees',
+          'droppedTrees',
+          'legacyMissing',
+        ]) {
+          counters[key] = sumNested('counters', key);
+        }
+        const summary = {
+          arm: batchSelect.value === 'off' ? 'baseline (Infinity)' : 'batched (200)',
+          liveMutations: live.length,
+          totalMs: +sum('ms').toFixed(1),
+          insertMs: +sum('insertMs').toFixed(1),
+          buildMs: +sum('buildMs').toFixed(1),
+          createMs: +sum('createMs').toFixed(1),
+          attributeMs: +sum('attributeMs').toFixed(1),
+          creates: sum('creates'),
+          attributeSets: sum('attributeSets'),
+          liveInserts: sum('live'),
+          fragmentCommits: sum('fragments'),
+          detachedInserts: sum('detached'),
+          phases,
+          phasePercent,
+          counters,
+          topTags: Object.fromEntries(
+            Object.entries(mergeCounts('tags')).slice(0, 20),
+          ),
+          topAttributes: Object.fromEntries(
+            Object.entries(mergeCounts('attributeNames')).slice(0, 20),
+          ),
+          warnings: [...warnings],
+          fullSnapshots: [...fullSnapshots],
+          longTasks: [...longTasks],
+          frameGaps: {
+            count: frameGaps.length,
+            over50ms: frameGaps.filter((ms) => ms > 50).length,
+            worst: frameGaps
+              .slice()
+              .sort((a, b) => b - a)
+              .slice(0, 20)
+              .map((ms) => +ms.toFixed(1)),
+          },
+          mutations: timings.map((timing) => ({
+            ...timing,
+            ms: +timing.ms.toFixed(3),
+            insertMs: +timing.insertMs.toFixed(3),
+            buildMs: +timing.buildMs.toFixed(3),
+            createMs: +timing.createMs.toFixed(3),
+            attributeMs: +timing.attributeMs.toFixed(3),
+            replayMs: +timing.replayMs.toFixed(1),
+          })),
+          slowest: live
+            .slice()
+            .sort((a, b) => b.ms - a.ms)
+            .slice(0, 5)
+            .map((t) => ({
+              totalMs: +t.ms.toFixed(2),
+              replayMs: +t.replayMs.toFixed(1),
+              adds: t.adds,
+              removes: t.removes,
+              insertMs: +t.insertMs.toFixed(2),
+              createMs: +t.createMs.toFixed(2),
+              attributeMs: +t.attributeMs.toFixed(2),
+              liveInserts: t.live,
+              fragmentCommits: t.fragments,
+              core: t.core,
+              topTags: Object.fromEntries(
+                Object.entries(t.tags)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 10),
+              ),
+              topAttributes: Object.fromEntries(
+                Object.entries(t.attributeNames)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 10),
+              ),
+            })),
+        };
+        console.table([summary]);
+        console.log('core phases', summary.phases);
+        console.log('core phase %', summary.phasePercent);
+        console.log('core counters', summary.counters);
+        console.log('top tags', summary.topTags);
+        console.log('top attributes', summary.topAttributes);
+        console.log('slowest mutations', summary.slowest);
+        if (summary.warnings.length)
+          console.warn('replayer warnings', summary.warnings);
+        return summary;
+      }
+      window.__profileReport = report;
+
+      function downloadReport() {
+        const summary = report();
+        if (!summary) return;
+        const blob = new Blob([JSON.stringify(summary, null, 2)], {
+          type: 'application/json',
+        });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `rrweb-profile-${batchSelect.value}-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+
+      function setPlaying(next) {
+        playing = next;
+        playPauseBtn.textContent = next ? 'Pause' : 'Play';
+      }
+
+      function setTransportEnabled(enabled) {
+        for (const el of [playPauseBtn, stepBackBtn, stepFwdBtn, scrub]) {
+          el.disabled = !enabled;
+        }
+      }
+
+      function renderClock(ms) {
+        clockEl.textContent = `${formatTime(ms)} / ${formatTime(totalTime)}`;
+      }
+
+      // baselineTime is 0 until the first play/seek, which is what made
+      // getCurrentTime() return -(epoch) on a freshly built player.
+      function clockReady() {
+        const context =
+          replayer && replayer.service && replayer.service.state.context;
+        return Boolean(
+          context &&
+            context.events.length &&
+            context.baselineTime >= context.events[0].timestamp,
+        );
+      }
+
+      function currentTime() {
+        if (!replayer || !clockReady()) return position;
+        const raw = replayer.getCurrentTime();
+        if (!Number.isFinite(raw)) return position;
+        return Math.max(0, Math.min(totalTime, raw));
+      }
+
+      function flagSkip(ms) {
+        skipFlag.hidden = false;
+        skipFlag.textContent = `skipped ${(ms / 1000).toFixed(1)}s idle`;
+        clearTimeout(skipTimer);
+        skipTimer = setTimeout(() => {
+          skipFlag.hidden = true;
+        }, 1500);
+      }
+
+      function updateTransport() {
+        if (!replayer) return;
+        const current = currentTime();
+        const wall = performance.now();
+        // skipInactive jumps the playhead rather than fast-forwarding, and this
+        // fork never emits SkipStart, so infer the jump from the clock instead.
+        if (playing && lastTickWall) {
+          const speed = Number(speedInput.value) || 1;
+          const expected = (wall - lastTickWall) * speed;
+          const advanced = current - lastTickPosition;
+          if (advanced > expected + 750) flagSkip(advanced - expected);
+        }
+        lastTickWall = wall;
+        lastTickPosition = current;
+        position = current;
+        if (!scrubbing) scrub.value = String(current);
+        renderClock(current);
+      }
+
+      // pause(offset) seeks and stays paused; play(offset) seeks and resumes.
+      function seek(ms, resume) {
+        if (!replayer) return;
+        const target = Math.max(0, Math.min(totalTime, ms));
+        position = target;
+        lastTickWall = 0;
+        lastTickPosition = target;
+        if (resume) {
+          replayer.play(target);
+        } else {
+          replayer.pause(target);
+        }
+        updateTransport();
+      }
+
+      function togglePlay() {
+        if (!replayer) return;
+        if (playing) {
+          replayer.pause();
+          position = currentTime();
+          return;
+        }
+        // Replaying after Finish would otherwise resume at the end and stall.
+        const from = currentTime();
+        seek(from >= totalTime - 20 ? 0 : from, true);
+      }
+
+      function destroy() {
+        if (performanceObserver) performanceObserver.disconnect();
+        performanceObserver = null;
+        if (frameHandle) cancelAnimationFrame(frameHandle);
+        frameHandle = 0;
+        if (clockTimer) clearInterval(clockTimer);
+        if (replayer) {
+          try {
+            replayer.pause();
+            replayer.destroy();
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+        replayer = null;
+        $('player').innerHTML = '';
+        rowsEl.innerHTML = '';
+        timings.length = 0;
+        warnings.length = 0;
+        fullSnapshots.length = 0;
+        setPlaying(false);
+        setTransportEnabled(false);
+        skipFlag.hidden = true;
+        clearTimeout(skipTimer);
+        scrubbing = false;
+        position = 0;
+        lastTickWall = 0;
+        lastTickPosition = 0;
+        totalTime = 0;
+        scrub.max = '0';
+        scrub.value = '0';
+        renderClock(0);
+      }
+
+      function threshold() {
+        return batchSelect.value === 'off' ? Number.POSITIVE_INFINITY : 200;
+      }
+
+      function build() {
+        if (!events.length) {
+          throw new Error('Load events first');
+        }
+        destroy();
+        startRuntimeMonitoring();
+        patchApplyMutation();
+        const plugins = [];
+        if (layoutRead.checked) {
+          plugins.push({
+            onBuild(node) {
+              if (node && node.nodeType === 1) void node.offsetHeight;
+            },
+          });
+        }
+        replayer = new rrweb.Replayer(events, {
+          root: $('player'),
+          skipInactive: skipInactive.checked,
+          liveMutationBatchThreshold: threshold(),
+          mouseTail: false,
+          speed: Number(speedInput.value) || 1,
+          plugins,
+          onMutationTrace(trace) {
+            lastCoreTrace = trace;
+          },
+          logger: {
+            log: (...args) => console.log(...args),
+            warn: (...args) => {
+              const message = args
+                .map((value) => {
+                  try {
+                    return typeof value === 'string'
+                      ? value
+                      : JSON.stringify(value);
+                  } catch {
+                    return String(value);
+                  }
+                })
+                .join(' ');
+              warnings.push(message.slice(0, 2_000));
+              console.warn(...args);
+            },
+          },
+        });
+        const events_ = rrweb.ReplayerEvents;
+        replayer.on(events_.Start, () => setPlaying(true));
+        replayer.on(events_.Resume, () => setPlaying(true));
+        replayer.on(events_.Pause, () => setPlaying(false));
+        replayer.on(events_.Finish, () => {
+          setPlaying(false);
+          updateTransport();
+        });
+        replayer.on(events_.SkipEnd, () => {
+          skipFlag.hidden = true;
+        });
+
+        // handles for console poking and automated checks
+        window.__replayer = replayer;
+        window.__events = events;
+
+        totalTime = replayer.getMetaData().totalTime;
+        scrub.max = String(totalTime);
+        scrub.value = '0';
+        setTransportEnabled(true);
+        setPlaying(false);
+        renderClock(0);
+
+        renderMeta(
+          events,
+          [
+            `batch ${
+              batchSelect.value === 'off' ? 'OFF (Infinity)' : 'ON (200)'
+            }`,
+            `skipInactive ${skipInactive.checked}`,
+            `layoutRead ${layoutRead.checked}`,
+            sourceLabel,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        );
+        clockTimer = setInterval(updateTransport, 100);
+      }
+
+      async function loadFromFiles(fileList) {
+        const files = Array.from(fileList || []).sort((a, b) =>
+          naturalOrder.compare(a.name, b.name),
+        );
+        if (!files.length) return;
+        const parts = [];
+        for (const file of files) {
+          parts.push({
+            name: file.name,
+            events: parseEventFile(await file.text(), file.name),
+          });
+        }
+        applyParts(parts);
+      }
+
+      async function fetchPart(url, name) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`GET ${url} → ${response.status}`);
+        return { name: name || url, events: parseEventFile(await response.text(), url) };
+      }
+
+      async function loadFromServer() {
+        const listing = await fetch('/session-parts').catch(() => null);
+        if (listing && listing.ok) {
+          const files = await listing.json();
+          if (files.length) {
+            const parts = [];
+            for (const file of files) {
+              parts.push(await fetchPart(`/session-part/${file.index}`, file.name));
+            }
+            applyParts(parts);
+            return;
+          }
+        }
+        applyParts([await fetchPart('/session.json')]);
+      }
+
+      $('file').addEventListener('change', (event) => {
+        loadFromFiles(event.target.files).catch((error) =>
+          alert(error.message),
+        );
+      });
+
+      let dragDepth = 0;
+      window.addEventListener('dragenter', (event) => {
+        if (!event.dataTransfer) return;
+        event.preventDefault();
+        dragDepth += 1;
+        document.body.classList.add('dragging');
+      });
+      window.addEventListener('dragover', (event) => event.preventDefault());
+      window.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) document.body.classList.remove('dragging');
+      });
+      window.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dragDepth = 0;
+        document.body.classList.remove('dragging');
+        loadFromFiles(event.dataTransfer && event.dataTransfer.files).catch(
+          (error) => alert(error.message),
+        );
+      });
+      $('rebuild').addEventListener('click', () => {
+        try {
+          build();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+      playPauseBtn.addEventListener('click', togglePlay);
+      stepBackBtn.addEventListener('click', () => {
+        if (replayer) seek(currentTime() - 5000, playing);
+      });
+      stepFwdBtn.addEventListener('click', () => {
+        if (replayer) seek(currentTime() + 5000, playing);
+      });
+
+      // Seek on release rather than on every input event: each seek replays
+      // synchronously from the last snapshot, so per-pixel seeking locks up.
+      scrub.addEventListener('pointerdown', () => {
+        if (!replayer) return;
+        scrubbing = true;
+        resumeAfterScrub = playing;
+        if (playing) {
+          replayer.pause();
+          position = currentTime();
+        }
+      });
+      scrub.addEventListener('input', () => {
+        scrubbing = true;
+        renderClock(Number(scrub.value));
+      });
+      scrub.addEventListener('change', () => {
+        if (!replayer) return;
+        const target = Number(scrub.value);
+        scrubbing = false;
+        seek(target, resumeAfterScrub);
+        resumeAfterScrub = false;
+      });
+
+      skipInactive.addEventListener('change', () => {
+        if (replayer) {
+          replayer.setConfig({ skipInactive: skipInactive.checked });
+        }
+        if (!skipInactive.checked) skipFlag.hidden = true;
+      });
+      speedInput.addEventListener('change', () => {
+        const speed = Number(speedInput.value) || 1;
+        if (replayer) replayer.setConfig({ speed });
+      });
+
+      $('jumpPlay').addEventListener('click', () => {
+        if (!replayer) return;
+        seek(Number(jumpInput.value) * 1000, true);
+      });
+      $('report').addEventListener('click', () => report());
+      $('download').addEventListener('click', () => downloadReport());
+      loadSessionBtn.addEventListener('click', () => {
+        loadFromServer().catch((error) => alert(error.message));
+      });
+
+      fetch('/session-parts')
+        .then(async (response) => {
+          if (!response.ok) return false;
+          const files = await response.json();
+          return files.length > 0;
+        })
+        .catch(() => false)
+        .then((hasServerSession) => {
+          if (!hasServerSession) return;
+          loadSessionBtn.hidden = false;
+          if (params.get('autoload') !== '0') {
+            return loadFromServer().catch((error) => alert(error.message));
+          }
+        });
+    </script>
+  </body>
+</html>

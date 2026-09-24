@@ -224,11 +224,66 @@ export type playerConfig = {
    * evicted when the limit is reached. Default: 10.
    */
   seekCacheMaxEntries: number;
+  /**
+   * Minimum number of added nodes in a live incremental mutation before the
+   * replayer stages new root subtrees in a DocumentFragment and commits each
+   * contiguous run with a single insertion into the connected iframe.
+   *
+   * Set to `Infinity` to always insert nodes one at a time. Default: 200.
+   */
+  liveMutationBatchThreshold: number;
+  /**
+   * Debug-only callback with a phase breakdown for each mutation event.
+   * Disabled by default; intended for the local replay profiling harness.
+   */
+  onMutationTrace?: (trace: MutationTrace) => void;
   logger: {
     log: (...args: Parameters<typeof console.log>) => void;
     warn: (...args: Parameters<typeof console.warn>) => void;
   };
   plugins?: ReplayPlugin[];
+};
+
+export type MutationTrace = {
+  totalMs: number;
+  isSync: boolean;
+  usingVirtualDom: boolean;
+  adds: number;
+  removes: number;
+  texts: number;
+  attributes: number;
+  phases: {
+    virtualDomSetupMs: number;
+    removesMs: number;
+    setupMs: number;
+    lookupMs: number;
+    buildMs: number;
+    insertMs: number;
+    resolveQueueMs: number;
+    fragmentFlushMs: number;
+    afterAppendMs: number;
+    textsMs: number;
+    attributesMs: number;
+  };
+  counters: {
+    built: number;
+    stagedRoots: number;
+    fragmentGroups: number;
+    queuedMissingParent: number;
+    queuedMissingNext: number;
+    skippedMissingRoot: number;
+    resolvedTrees: number;
+    droppedTrees: number;
+    legacyMissing: number;
+  };
+  slowestBuilds: Array<{
+    ms: number;
+    id: number;
+    type: number;
+    tagName?: string;
+    attributeCount: number;
+    textLength: number;
+  }>;
 };
 
 export type missingNode = {

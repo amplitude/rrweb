@@ -102,6 +102,8 @@ const REPLAY_CONSOLE_PREFIX = '[replayer]';
 
 const INJECTED_STYLE_ID = '__rrweb-injected-style__';
 
+const LIVE_MUTATION_BATCH_THRESHOLD = 200;
+
 const defaultMouseTailConfig = {
   duration: 500,
   lineCap: 'round',
@@ -220,6 +222,7 @@ export class Replayer {
       useVirtualDom: true, // Virtual-dom optimization is enabled by default.
       useSeekCache: false, // Opt-in until production-validated; flip to true once confidence is high.
       seekCacheMaxEntries: 10,
+      liveMutationBatchThreshold: LIVE_MUTATION_BATCH_THRESHOLD,
       logger: console,
     };
     this.config = Object.assign({}, defaultConfig, config);
@@ -1699,12 +1702,66 @@ export class Replayer {
     }
   }
 
+  private afterAppendStagedNode(node: Node | RRNode, id: number) {
+    // Skip the plugin onBuild callback for virtual dom
+    if (this.usingVirtualDom) return;
+    applyDialogToTopLevel(node);
+    for (const plugin of this.config.plugins || []) {
+      if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
+    }
+  }
+
   /**
    * Apply the mutation to the virtual dom or the real dom.
    * @param d - The mutation data.
    * @param isSync - Whether the mutation should be applied synchronously (while fast-forwarding).
    */
   private applyMutation(d: mutationData, isSync: boolean) {
+    const traceStart = performance.now();
+    const trace = this.config.onMutationTrace
+      ? {
+          totalMs: 0,
+          isSync,
+          usingVirtualDom: this.usingVirtualDom,
+          adds: d.adds.length,
+          removes: d.removes.length,
+          texts: d.texts.length,
+          attributes: d.attributes.length,
+          phases: {
+            virtualDomSetupMs: 0,
+            removesMs: 0,
+            setupMs: 0,
+            lookupMs: 0,
+            buildMs: 0,
+            insertMs: 0,
+            resolveQueueMs: 0,
+            fragmentFlushMs: 0,
+            afterAppendMs: 0,
+            textsMs: 0,
+            attributesMs: 0,
+          },
+          counters: {
+            built: 0,
+            stagedRoots: 0,
+            fragmentGroups: 0,
+            queuedMissingParent: 0,
+            queuedMissingNext: 0,
+            skippedMissingRoot: 0,
+            resolvedTrees: 0,
+            droppedTrees: 0,
+            legacyMissing: 0,
+          },
+          slowestBuilds: [] as Array<{
+            ms: number;
+            id: number;
+            type: number;
+            tagName?: string;
+            attributeCount: number;
+            textLength: number;
+          }>,
+        }
+      : null;
+    let phaseStart = performance.now();
     // Only apply virtual dom optimization if the fast-forward process has node mutation. Because the cost of creating a virtual dom tree and executing the diff algorithm is usually higher than directly applying other kind of events.
     if (this.config.useVirtualDom && !this.usingVirtualDom && isSync) {
       this.usingVirtualDom = true;
@@ -1726,6 +1783,11 @@ export class Replayer {
           }
         }
       }
+    }
+    if (trace) {
+      trace.usingVirtualDom = this.usingVirtualDom;
+      trace.phases.virtualDomSetupMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
     }
     const mirror = this.usingVirtualDom ? this.virtualDom.mirror : this.mirror;
     type TNode = typeof mirror extends Mirror ? Node : RRNode;
@@ -1783,11 +1845,69 @@ export class Replayer {
           }
         }
     });
+    if (trace) {
+      trace.phases.removesMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
+    }
 
     const legacy_missingNodeMap: missingNodeMap = {
       ...this.legacy_missingNodeRetryMap,
     };
     const queue: addedNodeMutation[] = [];
+    const shouldBatchLiveAdds =
+      !this.usingVirtualDom &&
+      d.adds.length >= this.config.liveMutationBatchThreshold &&
+      d.adds.every(
+        (mutation) =>
+          mutation.previousId !== -1 &&
+          mutation.nextId !== -1 &&
+          !mutation.node.isShadow &&
+          mutation.node.type !== NodeType.Document &&
+          !(
+            mutation.node.type === NodeType.Element &&
+            mutation.node.tagName === 'iframe'
+          ),
+      );
+    // Only needed to tell roots from descendants while staging, so it is not
+    // worth allocating for the many small mutations in a typical recording.
+    const addedNodeIds = shouldBatchLiveAdds
+      ? new Set(d.adds.map((mutation) => mutation.node.id))
+      : null;
+    type StagedRootGroup = {
+      parent: Node | ShadowRoot;
+      fragment: DocumentFragment;
+      anchor: Node | null;
+    };
+    const stagedRootGroups: StagedRootGroup[] = [];
+    const stagedNodeGroups = new Map<Node, StagedRootGroup>();
+    // Parallel arrays rather than one closure per added node: a single large
+    // mutation can carry thousands of adds.
+    const pendingAfterAppendNodes: Array<Node | RRNode> = [];
+    const pendingAfterAppendIds: number[] = [];
+    if (trace) {
+      trace.phases.setupMs = performance.now() - phaseStart;
+    }
+
+    const insertNode = (
+      parent: Node | ShadowRoot | RRNode,
+      target: Node | RRNode,
+      previous: Node | RRNode | null,
+      next: Node | RRNode | null,
+    ) => {
+      type TNode = typeof mirror extends Mirror ? Node : RRNode;
+      if (previous && previous.nextSibling && previous.nextSibling.parentNode) {
+        (parent as TNode).insertBefore(
+          target as TNode,
+          previous.nextSibling as TNode,
+        );
+      } else if (next && next.parentNode) {
+        (parent as TNode).contains(next as TNode)
+          ? (parent as TNode).insertBefore(target as TNode, next as TNode)
+          : (parent as TNode).insertBefore(target as TNode, null);
+      } else {
+        (parent as TNode).appendChild(target as TNode);
+      }
+    };
 
     // next not present at this moment
     const nextNotInDOM = (mutation: addedNodeMutation) => {
@@ -1811,14 +1931,17 @@ export class Replayer {
       if (!this.iframe.contentDocument) {
         return this.warn('Looks like your replayer has been destroyed.');
       }
+      let operationStart = trace ? performance.now() : 0;
       let parent: Node | null | ShadowRoot | RRNode = mirror.getNode(
         mutation.parentId,
       );
+      if (trace) trace.phases.lookupMs += performance.now() - operationStart;
       if (!parent) {
         if (mutation.node.type === NodeType.Document) {
           // is newly added document, maybe the document node of an iframe
           return this.newDocumentQueue.push(mutation);
         }
+        if (trace) trace.counters.queuedMissingParent += 1;
         return queue.push(mutation);
       }
 
@@ -1837,17 +1960,21 @@ export class Replayer {
 
       let previous: Node | RRNode | null = null;
       let next: Node | RRNode | null = null;
+      operationStart = trace ? performance.now() : 0;
       if (mutation.previousId) {
         previous = mirror.getNode(mutation.previousId);
       }
       if (mutation.nextId) {
         next = mirror.getNode(mutation.nextId);
       }
+      if (trace) trace.phases.lookupMs += performance.now() - operationStart;
       if (nextNotInDOM(mutation)) {
+        if (trace) trace.counters.queuedMissingNext += 1;
         return queue.push(mutation);
       }
 
       if (mutation.node.rootId && !mirror.getNode(mutation.node.rootId)) {
+        if (trace) trace.counters.skippedMissingRoot += 1;
         return;
       }
 
@@ -1863,15 +1990,10 @@ export class Replayer {
         );
         return;
       }
-      const afterAppend = (node: Node | RRNode, id: number) => {
-        // Skip the plugin onBuild callback for virtual dom
-        if (this.usingVirtualDom) return;
-        applyDialogToTopLevel(node);
-        for (const plugin of this.config.plugins || []) {
-          if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
-        }
-      };
+      const afterAppend = (node: Node | RRNode, id: number) =>
+        this.afterAppendStagedNode(node, id);
 
+      operationStart = trace ? performance.now() : 0;
       const target = buildNodeWithSN(mutation.node, {
         doc: targetDoc as Document, // can be Document or RRDocument
         mirror: mirror as Mirror, // can be this.mirror or virtualDom.mirror
@@ -1884,6 +2006,38 @@ export class Replayer {
          */
         afterAppend,
       }) as Node | RRNode;
+      if (trace) {
+        const buildMs = performance.now() - operationStart;
+        trace.phases.buildMs += buildMs;
+        trace.counters.built += 1;
+        const serialized = mutation.node;
+        const buildSample = {
+          ms: buildMs,
+          id: serialized.id,
+          type: serialized.type,
+          tagName:
+            serialized.type === NodeType.Element
+              ? serialized.tagName
+              : undefined,
+          attributeCount:
+            serialized.type === NodeType.Element
+              ? Object.keys(serialized.attributes).length
+              : 0,
+          textLength:
+            serialized.type === NodeType.Text
+              ? serialized.textContent.length
+              : 0,
+        };
+        if (trace.slowestBuilds.length < 20) {
+          trace.slowestBuilds.push(buildSample);
+          trace.slowestBuilds.sort((a, b) => b.ms - a.ms);
+        } else if (
+          buildMs > trace.slowestBuilds[trace.slowestBuilds.length - 1].ms
+        ) {
+          trace.slowestBuilds[trace.slowestBuilds.length - 1] = buildSample;
+          trace.slowestBuilds.sort((a, b) => b.ms - a.ms);
+        }
+      }
 
       // legacy data, we should not have -1 siblings any more
       if (mutation.previousId === -1 || mutation.nextId === -1) {
@@ -1964,24 +2118,63 @@ export class Replayer {
           );
       }
 
-      if (previous && previous.nextSibling && previous.nextSibling.parentNode) {
-        (parent as TNode).insertBefore(
-          target as TNode,
-          previous.nextSibling as TNode,
-        );
-      } else if (next && next.parentNode) {
-        // making sure the parent contains the reference nodes
-        // before we insert target before next.
-        (parent as TNode).contains(next as TNode)
-          ? (parent as TNode).insertBefore(target as TNode, next as TNode)
-          : (parent as TNode).insertBefore(target as TNode, null);
+      const shouldStageRoot =
+        shouldBatchLiveAdds &&
+        !addedNodeIds?.has(mutation.parentId) &&
+        parentSn?.type !== NodeType.Document;
+      operationStart = trace ? performance.now() : 0;
+      if (shouldStageRoot) {
+        const realTarget = target as Node;
+        const realPrevious = previous as Node | null;
+        const realNext = next as Node | null;
+        let group =
+          (realPrevious && stagedNodeGroups.get(realPrevious)) ||
+          (realNext && stagedNodeGroups.get(realNext));
+        if (!group) {
+          const realParent = parent as Node | ShadowRoot;
+          const anchor =
+            realNext?.parentNode === realParent
+              ? realNext
+              : realPrevious?.parentNode === realParent
+              ? realPrevious.nextSibling
+              : null;
+          group = {
+            parent: realParent,
+            fragment: (targetDoc as Document).createDocumentFragment(),
+            anchor,
+          };
+          stagedRootGroups.push(group);
+          if (trace) trace.counters.fragmentGroups += 1;
+        }
+        const stagedPreviousSibling = realPrevious?.nextSibling;
+        if (stagedPreviousSibling?.parentNode === group.fragment) {
+          group.fragment.insertBefore(realTarget, stagedPreviousSibling);
+        } else if (realNext?.parentNode === group.fragment) {
+          group.fragment.insertBefore(realTarget, realNext);
+        } else {
+          group.fragment.appendChild(realTarget);
+        }
+        stagedNodeGroups.set(realTarget, group);
+        if (trace) trace.counters.stagedRoots += 1;
+        pendingAfterAppendNodes.push(target);
+        pendingAfterAppendIds.push(mutation.node.id);
+        if (trace) trace.phases.insertMs += performance.now() - operationStart;
       } else {
-        (parent as TNode).appendChild(target as TNode);
+        insertNode(parent, target, previous, next);
+        if (trace) trace.phases.insertMs += performance.now() - operationStart;
+        /**
+         * target was added, execute plugin hooks
+         */
+        if (shouldBatchLiveAdds) {
+          pendingAfterAppendNodes.push(target);
+          pendingAfterAppendIds.push(mutation.node.id);
+        } else {
+          operationStart = trace ? performance.now() : 0;
+          afterAppend(target, mutation.node.id);
+          if (trace)
+            trace.phases.afterAppendMs += performance.now() - operationStart;
+        }
       }
-      /**
-       * target was added, execute plugin hooks
-       */
-      afterAppend(target, mutation.node.id);
 
       /**
        * https://github.com/rrweb-io/rrweb/pull/887
@@ -2026,6 +2219,7 @@ export class Replayer {
     });
 
     const startTime = Date.now();
+    phaseStart = performance.now();
     while (queue.length) {
       // transform queue to resolve tree
       const pendingCount = queue.length;
@@ -2041,11 +2235,13 @@ export class Replayer {
       for (const tree of resolveTrees) {
         const parent = mirror.getNode(tree.value.parentId);
         if (!parent) {
+          if (trace) trace.counters.droppedTrees += 1;
           this.debug(
             'Drop resolve tree since there is no parent for the root node.',
             tree,
           );
         } else {
+          if (trace) trace.counters.resolvedTrees += 1;
           iterateResolveTree(tree, (mutation) => {
             appendNode(mutation);
           });
@@ -2075,11 +2271,36 @@ export class Replayer {
         break;
       }
     }
+    if (trace) {
+      trace.phases.resolveQueueMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
+    }
+
+    for (const group of stagedRootGroups) {
+      const anchor =
+        group.anchor?.parentNode === group.parent ? group.anchor : null;
+      group.parent.insertBefore(group.fragment, anchor);
+    }
+    if (trace) {
+      trace.phases.fragmentFlushMs = performance.now() - phaseStart;
+      phaseStart = performance.now();
+    }
+    for (let i = 0; i < pendingAfterAppendNodes.length; i++) {
+      this.afterAppendStagedNode(
+        pendingAfterAppendNodes[i],
+        pendingAfterAppendIds[i],
+      );
+    }
+    if (trace) {
+      trace.phases.afterAppendMs += performance.now() - phaseStart;
+      trace.counters.legacyMissing = Object.keys(legacy_missingNodeMap).length;
+    }
 
     if (Object.keys(legacy_missingNodeMap).length) {
       Object.assign(this.legacy_missingNodeRetryMap, legacy_missingNodeMap);
     }
 
+    phaseStart = performance.now();
     uniqueTextMutations(d.texts).forEach((mutation) => {
       const target = mirror.getNode(mutation.id);
       if (!target) {
@@ -2107,6 +2328,8 @@ export class Replayer {
         if (parent?.rules?.length > 0) parent.rules = [];
       }
     });
+    if (trace) trace.phases.textsMs = performance.now() - phaseStart;
+    phaseStart = performance.now();
     d.attributes.forEach((mutation) => {
       const target = mirror.getNode(mutation.id);
       if (!target) {
@@ -2209,6 +2432,11 @@ export class Replayer {
         }
       }
     });
+    if (trace) {
+      trace.phases.attributesMs = performance.now() - phaseStart;
+      trace.totalMs = performance.now() - traceStart;
+      this.config.onMutationTrace?.(trace);
+    }
   }
 
   /**
