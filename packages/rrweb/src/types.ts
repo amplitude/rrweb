@@ -209,6 +209,15 @@ export type playerConfig = {
   unpackFn?: UnpackFn;
   useVirtualDom: boolean;
   /**
+   * Experimental: split live mutation snapshots with more additions than this
+   * value across animation frames. Set to 0 to keep mutations atomic.
+   *
+   * This bounds the number of added nodes handled by one task, but does not
+   * bound work inside a single added node (for example, parsing a large style).
+   * Default: 0.
+   */
+  liveMutationChunkSize: number;
+  /**
    * When set, the replayer will maintain an in-memory cache of serialized DOM
    * snapshots taken after each seek operation. Subsequent seeks that land
    * between a cached snapshot and the next recording checkpoint will restore

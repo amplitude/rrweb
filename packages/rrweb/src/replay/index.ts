@@ -218,6 +218,7 @@ export class Replayer {
       pauseAnimation: true,
       mouseTail: defaultMouseTailConfig,
       useVirtualDom: true, // Virtual-dom optimization is enabled by default.
+      liveMutationChunkSize: 0,
       useSeekCache: false, // Opt-in until production-validated; flip to true once confidence is high.
       seekCacheMaxEntries: 10,
       logger: console,
@@ -779,7 +780,7 @@ export class Replayer {
           // even though it is before startIdx.
           const metaEvt = events.find((e) => e.type === EventType.Meta);
           if (metaEvt) {
-            this.getCastFn(metaEvt, true)();
+            void this.getCastFn(metaEvt, true)();
           }
 
           // Restore DOM state from the cached snapshot, mirroring the
@@ -827,12 +828,12 @@ export class Replayer {
           break;
       }
       const castFn = this.getCastFn(event, true);
-      castFn();
+      void castFn();
     }
   };
 
   private getCastFn = (event: eventWithTime, isSync = false) => {
-    let castFn: undefined | (() => void);
+    let castFn: undefined | (() => void | Promise<void>);
     switch (event.type) {
       case EventType.DomContentLoaded:
       case EventType.Load:
@@ -874,79 +875,84 @@ export class Replayer {
         break;
       case EventType.IncrementalSnapshot:
         castFn = () => {
-          this.applyIncremental(event, isSync);
-          if (isSync) {
-            // do not check skip in sync
-            return;
-          }
-          if (this.config.skipInactive && !this.nextUserInteractionEvent) {
-            for (const _event of this.service.state.context.events) {
-              if (_event.timestamp <= event.timestamp) {
-                continue;
-              }
-              if (this.isUserInteraction(_event)) {
-                if (
-                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                  _event.delay! - event.delay! >
-                  this.config.inactivePeriodThreshold *
-                    this.speedService.state.context.timer.speed
-                ) {
-                  this.nextUserInteractionEvent = _event;
+          const afterApply = () => {
+            if (isSync) {
+              // do not check skip in sync
+              return;
+            }
+            if (this.config.skipInactive && !this.nextUserInteractionEvent) {
+              for (const _event of this.service.state.context.events) {
+                if (_event.timestamp <= event.timestamp) {
+                  continue;
                 }
-                break;
+                if (this.isUserInteraction(_event)) {
+                  if (
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    _event.delay! - event.delay! >
+                    this.config.inactivePeriodThreshold *
+                      this.speedService.state.context.timer.speed
+                  ) {
+                    this.nextUserInteractionEvent = _event;
+                  }
+                  break;
+                }
+              }
+              if (this.nextUserInteractionEvent) {
+                const skipTime =
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  this.nextUserInteractionEvent.delay! - event.delay!;
+                this.playInternal(this.getCurrentTime() + skipTime);
+                this.nextUserInteractionEvent = null;
               }
             }
-            if (this.nextUserInteractionEvent) {
-              const skipTime =
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                this.nextUserInteractionEvent.delay! - event.delay!;
-              this.playInternal(this.getCurrentTime() + skipTime);
-              this.nextUserInteractionEvent = null;
-            }
-          }
+          };
+          const result = this.applyIncremental(event, isSync);
+          if (result) return result.then(afterApply);
+          afterApply();
         };
         break;
       default:
     }
     const wrappedCastFn = () => {
-      if (castFn) {
-        castFn();
-      }
-
-      for (const plugin of this.config.plugins || []) {
-        if (plugin.handler) plugin.handler(event, isSync, { replayer: this });
-      }
-
-      this.service.send({ type: 'CAST_EVENT', payload: { event } });
-
-      // events are kept sorted by timestamp, check if this is the last event
-      const last_index = this.service.state.context.events.length - 1;
-      if (
-        !this.config.liveMode &&
-        event === this.service.state.context.events[last_index]
-      ) {
-        const finish = () => {
-          if (last_index < this.service.state.context.events.length - 1) {
-            // more events have been added since the setTimeout
-            return;
-          }
-          this.backToNormal();
-          this.service.send('END');
-          this.emitter.emit(ReplayerEvents.Finish);
-        };
-        let finish_buffer = 50; // allow for checking whether new events aren't just about to be loaded in
-        if (
-          event.type === EventType.IncrementalSnapshot &&
-          event.data.source === IncrementalSource.MouseMove &&
-          event.data.positions.length
-        ) {
-          // extend finish event if the last event is a mouse move so that the timer isn't stopped by the service before checking the last event
-          finish_buffer += Math.max(0, -event.data.positions[0].timeOffset);
+      const afterCast = () => {
+        for (const plugin of this.config.plugins || []) {
+          if (plugin.handler) plugin.handler(event, isSync, { replayer: this });
         }
-        setTimeout(finish, finish_buffer);
-      }
 
-      this.emitter.emit(ReplayerEvents.EventCast, event);
+        this.service.send({ type: 'CAST_EVENT', payload: { event } });
+
+        // events are kept sorted by timestamp, check if this is the last event
+        const last_index = this.service.state.context.events.length - 1;
+        if (
+          !this.config.liveMode &&
+          event === this.service.state.context.events[last_index]
+        ) {
+          const finish = () => {
+            if (last_index < this.service.state.context.events.length - 1) {
+              // more events have been added since the setTimeout
+              return;
+            }
+            this.backToNormal();
+            this.service.send('END');
+            this.emitter.emit(ReplayerEvents.Finish);
+          };
+          let finish_buffer = 50; // allow for checking whether new events aren't just about to be loaded in
+          if (
+            event.type === EventType.IncrementalSnapshot &&
+            event.data.source === IncrementalSource.MouseMove &&
+            event.data.positions.length
+          ) {
+            // extend finish event if the last event is a mouse move so that the timer isn't stopped by the service before checking the last event
+            finish_buffer += Math.max(0, -event.data.positions[0].timeOffset);
+          }
+          setTimeout(finish, finish_buffer);
+        }
+
+        this.emitter.emit(ReplayerEvents.EventCast, event);
+      };
+      const result = castFn?.();
+      if (result) return result.then(afterCast);
+      afterCast();
     };
     return wrappedCastFn;
   };
@@ -1427,6 +1433,16 @@ export class Replayer {
     switch (d.source) {
       case IncrementalSource.Mutation: {
         try {
+          if (
+            !isSync &&
+            this.config.liveMutationChunkSize > 0 &&
+            d.adds.length > this.config.liveMutationChunkSize
+          ) {
+            return this.applyMutationInFrames(
+              d,
+              this.config.liveMutationChunkSize,
+            );
+          }
           this.applyMutation(d, isSync);
         } catch (error) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
@@ -1697,6 +1713,59 @@ export class Replayer {
       }
       default:
     }
+  }
+
+  /**
+   * Apply a large live mutation over multiple animation frames.
+   *
+   * The first chunk owns removals, the last owns text/attribute changes, and
+   * additions retain their recorded order. The returned promise tells Timer
+   * not to advance replay time or cast a later event until every chunk lands.
+   *
+   * This is intentionally opt-in while we measure visual correctness and the
+   * effect of dependencies that cross chunk boundaries.
+   */
+  private applyMutationInFrames(
+    d: mutationData,
+    chunkSize: number,
+  ): Promise<void> {
+    let addIndex = 0;
+    let firstChunk = true;
+
+    return new Promise((resolve) => {
+      const applyChunk = () => {
+        const nextAddIndex = Math.min(addIndex + chunkSize, d.adds.length);
+        const isLastChunk = nextAddIndex === d.adds.length;
+        const chunk: mutationData = {
+          ...d,
+          removes: firstChunk ? d.removes : [],
+          adds: d.adds.slice(addIndex, nextAddIndex),
+          texts: isLastChunk ? d.texts : [],
+          attributes: isLastChunk ? d.attributes : [],
+        };
+
+        try {
+          this.applyMutation(chunk, false);
+        } catch (error) {
+          // Match the synchronous mutation path: warn, drop the remainder of
+          // this event, and allow playback to continue.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
+          this.warn(`Exception in mutation ${error.message || error}`, d);
+          resolve();
+          return;
+        }
+
+        addIndex = nextAddIndex;
+        firstChunk = false;
+        if (isLastChunk) {
+          resolve();
+        } else {
+          requestAnimationFrame(applyChunk);
+        }
+      };
+
+      applyChunk();
+    });
   }
 
   /**
