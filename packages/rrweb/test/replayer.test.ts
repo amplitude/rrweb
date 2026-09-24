@@ -1433,14 +1433,12 @@ describe('replayer', function () {
     expect(result).toMatchObject({ resolvable: true, unresolvable: 0 });
   });
 
-  it(
-    'applies a long run of mixed resolvable and stuck mutation events without the 500ms resolve timeout',
-    async () => {
-      await page.evaluate(
-        `events = ${JSON.stringify(heavyUnresolvableMutationEvents)}`,
-      );
+  it('applies a long run of mixed resolvable and stuck mutation events without the 500ms resolve timeout', async () => {
+    await page.evaluate(
+      `events = ${JSON.stringify(heavyUnresolvableMutationEvents)}`,
+    );
 
-      const result = await page.evaluate(`
+    const result = await page.evaluate(`
         const { Replayer } = rrweb;
         const replayer = new Replayer(events, { showWarning: false });
         const start = performance.now();
@@ -1460,20 +1458,18 @@ describe('replayer', function () {
         });
       `);
 
-      const expected = expectedHeavyUnresolvableDom();
-      const duration = (result as { duration: number }).duration;
-      console.log(
-        `heavy unresolvable fixture apply: ${duration.toFixed(1)}ms ` +
-          `(pre-fix ~${HEAVY_UNRESOLVABLE_BATCHES * 500}ms)`,
-      );
-      // Measured locally: 15.8ms with the early exit vs 10031ms on master
-      // (20 batches × 500ms timeout). Keep a 1s ceiling so CI noise cannot
-      // hide even two leftover timeouts.
-      expect(duration).toBeLessThan(1_000);
-      expect(result).toMatchObject(expected);
-    },
-    15_000,
-  );
+    const expected = expectedHeavyUnresolvableDom();
+    const duration = (result as { duration: number }).duration;
+    console.log(
+      `heavy unresolvable fixture apply: ${duration.toFixed(1)}ms ` +
+        `(pre-fix ~${HEAVY_UNRESOLVABLE_BATCHES * 500}ms)`,
+    );
+    // Measured locally: 15.8ms with the early exit vs 10031ms on master
+    // (20 batches × 500ms timeout). Keep a 1s ceiling so CI noise cannot
+    // hide even two leftover timeouts.
+    expect(duration).toBeLessThan(1_000);
+    expect(result).toMatchObject(expected);
+  }, 15_000);
 
   it('injects rrweb default styles into shadow roots', async () => {
     await page.evaluate(`events = ${JSON.stringify(shadowDomEvents)}`);
