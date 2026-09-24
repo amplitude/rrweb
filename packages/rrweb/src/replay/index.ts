@@ -79,6 +79,7 @@ import {
   polyfill,
   queueToResolveTrees,
   iterateResolveTree,
+  type ResolveTree,
   type AppendedIframe,
   getBaseDimension,
   hasShadowRoot,
@@ -116,6 +117,38 @@ function indicatesTouchDevice(e: eventWithTime) {
       (e.data.source == IncrementalSource.MouseInteraction &&
         e.data.type == MouseInteractions.TouchStart))
   );
+}
+
+function mutationQueueIdKey(queue: addedNodeMutation[]): string {
+  return queue.map((m) => m.node.id).join(',');
+}
+
+function summarizeResolveTrees(
+  trees: ResolveTree[],
+): Array<{ parentId: number; nodeId: number }> {
+  return trees.map((tree) => ({
+    parentId: tree.value.parentId,
+    nodeId: tree.value.node.id,
+  }));
+}
+
+function summarizeIncrementalData(d: incrementalData): {
+  source: IncrementalSource;
+  adds?: number;
+  removes?: number;
+  texts?: number;
+  attributes?: number;
+} {
+  if (d.source !== IncrementalSource.Mutation) {
+    return { source: d.source };
+  }
+  return {
+    source: d.source,
+    adds: d.adds.length,
+    removes: d.removes.length,
+    texts: d.texts.length,
+    attributes: d.attributes.length,
+  };
 }
 
 export class Replayer {
@@ -2026,15 +2059,34 @@ export class Replayer {
     });
 
     const startTime = Date.now();
+    let previousQueuedIds: string | null = null;
+    let resolveIterations = 0;
     while (queue.length) {
+      const queuedIds = mutationQueueIdKey(queue);
+      // Same nodes came back unattached (typically waiting on a sibling whose
+      // tree was dropped because its parent was never found). Retrying would
+      // spin the main thread until the time cap and can freeze the page.
+      if (queuedIds === previousQueuedIds) {
+        this.warn(
+          'Stopped resolving mutation queue; nodes could not be attached (missing parent or sibling).',
+          {
+            count: queue.length,
+            nodeIds: queue.slice(0, 50).map((m) => m.node.id),
+          },
+        );
+        break;
+      }
+      previousQueuedIds = queuedIds;
+
       // transform queue to resolve tree
       const pendingCount = queue.length;
       const resolveTrees = queueToResolveTrees(queue);
       queue.length = 0;
-      if (Date.now() - startTime > 500) {
+      resolveIterations++;
+      if (Date.now() - startTime > 500 || resolveIterations > 1000) {
         this.warn(
           'Timeout in the loop, please check the resolve tree data:',
-          resolveTrees,
+          summarizeResolveTrees(resolveTrees),
         );
         break;
       }
@@ -2043,7 +2095,10 @@ export class Replayer {
         if (!parent) {
           this.debug(
             'Drop resolve tree since there is no parent for the root node.',
-            tree,
+            {
+              parentId: tree.value.parentId,
+              nodeId: tree.value.node.id,
+            },
           );
         } else {
           iterateResolveTree(tree, (mutation) => {
@@ -2638,7 +2693,7 @@ export class Replayer {
   }
 
   private warnNodeNotFound(d: incrementalData, id: number) {
-    this.warn(`Node with id '${id}' not found. `, d);
+    this.warn(`Node with id '${id}' not found. `, summarizeIncrementalData(d));
   }
 
   private warnCanvasMutationFailed(
@@ -2655,7 +2710,7 @@ export class Replayer {
      * is microtask, so events fired on a removed DOM may emit
      * snapshots in the reverse order.
      */
-    this.debug(`Node with id '${id}' not found. `, d);
+    this.debug(`Node with id '${id}' not found. `, summarizeIncrementalData(d));
   }
 
   private warn(...args: Parameters<typeof console.warn>) {
