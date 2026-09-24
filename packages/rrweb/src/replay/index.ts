@@ -1867,6 +1867,16 @@ export class Replayer {
         // Skip the plugin onBuild callback for virtual dom
         if (this.usingVirtualDom) return;
         applyDialogToTopLevel(node);
+        if (
+          'adoptedStyleSheets' in mutation.node &&
+          mutation.node.adoptedStyleSheets?.length &&
+          (hasShadowRoot(node) || mutation.node.type === NodeType.Document)
+        ) {
+          this.applySnapshotAdoptedStyleSheets(
+            node as Node,
+            mutation.node.adoptedStyleSheets,
+          );
+        }
         for (const plugin of this.config.plugins || []) {
           if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
         }
