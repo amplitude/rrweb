@@ -101,6 +101,23 @@ The synthetic tests and incremental-only dumps are not a substitute for the prod
 pnpm --filter @amplitude/rrweb profile-replay -- /path/to/session.json
 ```
 
+Exports that are split into chunks can be passed as several paths or as a
+directory, and are merged in the browser:
+
+```sh
+pnpm --filter @amplitude/rrweb profile-replay -- /path/to/chunk-1.json /path/to/chunk-2.json
+pnpm --filter @amplitude/rrweb profile-replay -- /path/to/session-dir
+```
+
+You can also select several files in the picker or drop them on the page. Parts
+are ordered by their first timestamp and the merged list is stably sorted, so
+chunk filenames do not have to sort correctly. Events repeated across
+overlapping chunks are deduped (only against events sharing a timestamp), and
+the meta line reports how many were dropped. Each file may be a JSON array, an
+`{events}` / `{data.events}` envelope, or newline-delimited JSON. If incremental
+events precede the first FullSnapshot, the meta line warns that a leading chunk
+is missing.
+
 That serves:
 
 - `http://127.0.0.1:4177/?batch=on` — this PR, threshold 200
@@ -119,7 +136,26 @@ The footer table breaks each mutation into total / insertion / build time plus l
 - aggregate DOM API timing and counts for node creation and attributes, plus tag/attribute histograms
 - FullSnapshot rebuild timing, warnings, long tasks, and worst animation-frame gaps
 
-Optional query flags: `skipInactive=1`, `layoutRead=1` (reads `offsetHeight` in `onBuild`), `t=24`, `speed=1`. If no path is passed, drop a JSON file in the UI, or put one at `packages/rrweb/temp/session.json`.
+Optional query flags: `skipInactive=1`, `layoutRead=1` (reads `offsetHeight` in `onBuild`), `t=24`, `speed=1`, `autoload=0`. If no path is passed, drop JSON files on the page, or put a session at `packages/rrweb/temp/session.json` or chunks in `packages/rrweb/temp/session/`.
+
+### Transport
+
+The transport bar has a play/pause toggle, ±5s steps, and a scrubber. The
+scrubber seeks on release rather than on every input event, because each seek
+replays synchronously from the previous snapshot. `skipInactive` and `speed`
+now apply to the running player through `setConfig` instead of only at
+construction, so they no longer need a rebuild.
+
+Note that `getCurrentTime()` is relative to `baselineTime`, which is `0` until
+the first seek — so on a freshly built player it returns roughly `-Date.now()`.
+The harness therefore keeps its own playhead and only trusts `getCurrentTime()`
+once the player has a real baseline. Passing that raw value back into `play()`
+is what made the old Play button appear to do nothing.
+
+`skipInactive` in this fork jumps the playhead with `playInternal` rather than
+fast-forwarding, and never emits `SkipStart`, so the harness infers skips by
+comparing replay-time advance against wall-clock advance and briefly shows
+`skipped N.Ns idle`.
 
 ## Caveats
 

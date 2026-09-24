@@ -29,7 +29,7 @@
       }
       body {
         display: grid;
-        grid-template-rows: auto auto 1fr auto;
+        grid-template-rows: auto auto auto 1fr auto;
         min-height: 100%;
       }
       header,
@@ -106,6 +106,54 @@
       a {
         color: var(--accent);
       }
+      #transport {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+      }
+      #scrub {
+        flex: 1;
+        min-width: 220px;
+        accent-color: var(--accent);
+        height: 22px;
+      }
+      #scrub:disabled {
+        opacity: 0.4;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .mono {
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+      }
+      #skipFlag {
+        color: var(--warn);
+      }
+      #playPause {
+        min-width: 86px;
+      }
+      /* The replay iframe would otherwise swallow the drop. */
+      body.dragging #player {
+        pointer-events: none;
+      }
+      body.dragging::after {
+        content: 'Drop rrweb JSON files (chunks are merged by timestamp)';
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(17, 19, 24, 0.85);
+        border: 2px dashed var(--accent);
+        color: var(--accent);
+        font-size: 16px;
+        z-index: 10;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
@@ -113,7 +161,12 @@
       <strong>Live mutation profile harness</strong>
       <label>
         Events
-        <input id="file" type="file" accept="application/json,.json" />
+        <input
+          id="file"
+          type="file"
+          multiple
+          accept="application/json,.json,.ndjson,.txt"
+        />
       </label>
       <label>
         Arm
@@ -138,21 +191,35 @@
         Jump to (s)
         <input id="jump" type="number" min="0" step="0.1" value="24" />
       </label>
-      <button id="loadSession" hidden>Load /session.json</button>
+      <button id="loadSession" hidden>Load server session</button>
       <button id="rebuild">Rebuild player</button>
-      <button id="play" class="primary">Play</button>
-      <button id="pause">Pause</button>
       <button id="jumpPlay">Jump then play live</button>
       <button id="report">Log summary</button>
       <button id="download">Download report JSON</button>
-      <span id="clock" class="stat">t=—</span>
       <a id="offLink" href="?batch=off">open baseline tab</a>
       <a id="onLink" href="?batch=on">open batched tab</a>
     </header>
     <div id="meta">
-      Drop a full session JSON (Meta + FullSnapshot + incrementals). Chrome
+      Pick or drop one or more rrweb JSON files (Meta + FullSnapshot +
+      incrementals). Split exports are merged and sorted by timestamp. Chrome
       Performance will show <code>rrweb.applyMutation</code> marks. Record the
       parent page, not the iframe.
+    </div>
+    <div id="transport">
+      <button id="playPause" class="primary" disabled>Play</button>
+      <button id="stepBack" title="back 5s" disabled>-5s</button>
+      <button id="stepFwd" title="forward 5s" disabled>+5s</button>
+      <input
+        id="scrub"
+        type="range"
+        min="0"
+        max="0"
+        value="0"
+        step="10"
+        disabled
+      />
+      <span id="clock" class="stat mono">0:00.0 / 0:00.0</span>
+      <span id="skipFlag" class="stat" hidden>skipping inactivity</span>
     </div>
     <div id="player"></div>
     <footer>
@@ -186,6 +253,15 @@
       const rowsEl = $('rows');
       const clockEl = $('clock');
       const loadSessionBtn = $('loadSession');
+      const playPauseBtn = $('playPause');
+      const stepBackBtn = $('stepBack');
+      const stepFwdBtn = $('stepFwd');
+      const scrub = $('scrub');
+      const skipFlag = $('skipFlag');
+      const naturalOrder = new Intl.Collator(undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
 
       batchSelect.value = params.get('batch') === 'off' ? 'off' : 'on';
       skipInactive.checked = params.get('skipInactive') === '1';
@@ -196,6 +272,18 @@
       let events = [];
       let replayer = null;
       let clockTimer = null;
+      let totalTime = 0;
+      let playing = false;
+      let scrubbing = false;
+      let resumeAfterScrub = false;
+      let sourceLabel = '';
+      // Authoritative playhead. getCurrentTime() is baselineTime-relative and
+      // returns a large negative number until the first seek, so the old
+      // play(getCurrentTime()) seeked to nonsense and nothing ever played.
+      let position = 0;
+      let skipTimer = null;
+      let lastTickWall = 0;
+      let lastTickPosition = 0;
       const timings = [];
       const warnings = [];
       const fullSnapshots = [];
@@ -257,14 +345,131 @@
         const start = list[0]?.timestamp;
         const end = list[list.length - 1]?.timestamp;
         const duration = start && end ? end - start : 0;
-        return { types, maxAdds, large, mutations, duration, count: list.length };
+        const firstSnapshot = list.findIndex((event) => event.type === 2);
+        const firstIncremental = list.findIndex((event) => event.type === 3);
+        // Incrementals ahead of the first FullSnapshot mean the head chunk is
+        // missing; everything before the snapshot replays against nothing.
+        const orphanedHead =
+          firstIncremental !== -1 &&
+          (firstSnapshot === -1 || firstIncremental < firstSnapshot);
+        return {
+          types,
+          maxAdds,
+          large,
+          mutations,
+          duration,
+          orphanedHead,
+          count: list.length,
+        };
+      }
+
+      function isEvent(value) {
+        return (
+          value &&
+          typeof value === 'object' &&
+          typeof value.type === 'number' &&
+          typeof value.timestamp === 'number'
+        );
       }
 
       function normalize(raw) {
-        if (Array.isArray(raw)) return raw;
-        if (Array.isArray(raw.events)) return raw.events;
-        if (raw.data && Array.isArray(raw.data.events)) return raw.data.events;
+        if (Array.isArray(raw)) {
+          // fast path: a plain event array, avoids copying big sessions
+          return raw.every(isEvent) ? raw : raw.flatMap(normalize);
+        }
+        if (isEvent(raw)) return [raw];
+        if (raw && Array.isArray(raw.events)) return raw.events;
+        if (raw && raw.data && Array.isArray(raw.data.events))
+          return raw.data.events;
         throw new Error('JSON is not an rrweb event array');
+      }
+
+      // Chunked exports arrive as a JSON array, an {events}/{data.events}
+      // envelope, or newline-delimited JSON with one value per line.
+      function parseEventFile(text, name) {
+        const trimmed = text.trim();
+        if (!trimmed) throw new Error(`${name} is empty`);
+        try {
+          return normalize(JSON.parse(trimmed));
+        } catch (jsonError) {
+          const lines = trimmed.split('\n').filter((line) => line.trim());
+          if (lines.length < 2) throw new Error(`${name}: ${jsonError.message}`);
+          const collected = [];
+          lines.forEach((line, index) => {
+            let value;
+            try {
+              value = JSON.parse(line);
+            } catch (lineError) {
+              throw new Error(
+                `${name} line ${index + 1}: ${lineError.message}`,
+              );
+            }
+            for (const event of normalize(value)) collected.push(event);
+          });
+          return collected;
+        }
+      }
+
+      /**
+       * Merge split exports. Parts are ordered by their first timestamp, then
+       * the whole list is stably sorted so that events recorded in the same
+       * millisecond keep the order the recorder emitted them in. Overlapping
+       * chunks are deduped, but only against events sharing a timestamp so a
+       * legitimate repeat (e.g. an identical scroll later on) is kept.
+       */
+      function mergeParts(parts) {
+        const usable = parts.filter((part) => part.events.length);
+        if (!usable.length) throw new Error('No events found in those files');
+        usable.sort(
+          (a, b) => a.events[0].timestamp - b.events[0].timestamp,
+        );
+        const merged = [];
+        for (const part of usable) {
+          for (const event of part.events) merged.push(event);
+        }
+        merged.sort((a, b) => a.timestamp - b.timestamp);
+
+        const deduped = [];
+        let duplicates = 0;
+        for (let i = 0; i < merged.length; ) {
+          let end = i;
+          while (
+            end + 1 < merged.length &&
+            merged[end + 1].timestamp === merged[i].timestamp
+          ) {
+            end += 1;
+          }
+          if (end === i) {
+            deduped.push(merged[i]);
+          } else {
+            const seen = new Set();
+            for (let k = i; k <= end; k++) {
+              const key = JSON.stringify(merged[k]);
+              if (seen.has(key)) {
+                duplicates += 1;
+                continue;
+              }
+              seen.add(key);
+              deduped.push(merged[k]);
+            }
+          }
+          i = end + 1;
+        }
+        return { events: deduped, duplicates, parts: usable };
+      }
+
+      function applyParts(parts) {
+        const result = mergeParts(parts);
+        events = result.events;
+        const names = result.parts.map((part) => part.name);
+        sourceLabel =
+          names.length === 1
+            ? names[0]
+            : `${names.length} files: ${names.join(', ')}`;
+        if (result.duplicates) {
+          sourceLabel += ` · ${result.duplicates} duplicate events dropped`;
+        }
+        build();
       }
 
       function renderMeta(list, extra = '') {
@@ -285,6 +490,10 @@
         if (missingSnapshot) {
           metaEl.textContent +=
             ' · WARNING: no FullSnapshot. This is not a real replay; graft or export the full session.';
+        } else if (summary.orphanedHead) {
+          metaEl.className = 'warn';
+          metaEl.textContent +=
+            ' · WARNING: incremental events precede the first FullSnapshot. A leading chunk is probably missing.';
         }
       }
 
@@ -648,6 +857,95 @@
         URL.revokeObjectURL(link.href);
       }
 
+      function setPlaying(next) {
+        playing = next;
+        playPauseBtn.textContent = next ? 'Pause' : 'Play';
+      }
+
+      function setTransportEnabled(enabled) {
+        for (const el of [playPauseBtn, stepBackBtn, stepFwdBtn, scrub]) {
+          el.disabled = !enabled;
+        }
+      }
+
+      function renderClock(ms) {
+        clockEl.textContent = `${formatTime(ms)} / ${formatTime(totalTime)}`;
+      }
+
+      // baselineTime is 0 until the first play/seek, which is what made
+      // getCurrentTime() return -(epoch) on a freshly built player.
+      function clockReady() {
+        const context =
+          replayer && replayer.service && replayer.service.state.context;
+        return Boolean(
+          context &&
+            context.events.length &&
+            context.baselineTime >= context.events[0].timestamp,
+        );
+      }
+
+      function currentTime() {
+        if (!replayer || !clockReady()) return position;
+        const raw = replayer.getCurrentTime();
+        if (!Number.isFinite(raw)) return position;
+        return Math.max(0, Math.min(totalTime, raw));
+      }
+
+      function flagSkip(ms) {
+        skipFlag.hidden = false;
+        skipFlag.textContent = `skipped ${(ms / 1000).toFixed(1)}s idle`;
+        clearTimeout(skipTimer);
+        skipTimer = setTimeout(() => {
+          skipFlag.hidden = true;
+        }, 1500);
+      }
+
+      function updateTransport() {
+        if (!replayer) return;
+        const current = currentTime();
+        const wall = performance.now();
+        // skipInactive jumps the playhead rather than fast-forwarding, and this
+        // fork never emits SkipStart, so infer the jump from the clock instead.
+        if (playing && lastTickWall) {
+          const speed = Number(speedInput.value) || 1;
+          const expected = (wall - lastTickWall) * speed;
+          const advanced = current - lastTickPosition;
+          if (advanced > expected + 750) flagSkip(advanced - expected);
+        }
+        lastTickWall = wall;
+        lastTickPosition = current;
+        position = current;
+        if (!scrubbing) scrub.value = String(current);
+        renderClock(current);
+      }
+
+      // pause(offset) seeks and stays paused; play(offset) seeks and resumes.
+      function seek(ms, resume) {
+        if (!replayer) return;
+        const target = Math.max(0, Math.min(totalTime, ms));
+        position = target;
+        lastTickWall = 0;
+        lastTickPosition = target;
+        if (resume) {
+          replayer.play(target);
+        } else {
+          replayer.pause(target);
+        }
+        updateTransport();
+      }
+
+      function togglePlay() {
+        if (!replayer) return;
+        if (playing) {
+          replayer.pause();
+          position = currentTime();
+          return;
+        }
+        // Replaying after Finish would otherwise resume at the end and stall.
+        const from = currentTime();
+        seek(from >= totalTime - 20 ? 0 : from, true);
+      }
+
       function destroy() {
         if (performanceObserver) performanceObserver.disconnect();
         performanceObserver = null;
@@ -668,6 +966,18 @@
         timings.length = 0;
         warnings.length = 0;
         fullSnapshots.length = 0;
+        setPlaying(false);
+        setTransportEnabled(false);
+        skipFlag.hidden = true;
+        clearTimeout(skipTimer);
+        scrubbing = false;
+        position = 0;
+        lastTickWall = 0;
+        lastTickPosition = 0;
+        totalTime = 0;
+        scrub.max = '0';
+        scrub.value = '0';
+        renderClock(0);
       }
 
       function threshold() {
@@ -718,38 +1028,107 @@
             },
           },
         });
+        const events_ = rrweb.ReplayerEvents;
+        replayer.on(events_.Start, () => setPlaying(true));
+        replayer.on(events_.Resume, () => setPlaying(true));
+        replayer.on(events_.Pause, () => setPlaying(false));
+        replayer.on(events_.Finish, () => {
+          setPlaying(false);
+          updateTransport();
+        });
+        replayer.on(events_.SkipEnd, () => {
+          skipFlag.hidden = true;
+        });
+
+        // handles for console poking and automated checks
+        window.__replayer = replayer;
+        window.__events = events;
+
+        totalTime = replayer.getMetaData().totalTime;
+        scrub.max = String(totalTime);
+        scrub.value = '0';
+        setTransportEnabled(true);
+        setPlaying(false);
+        renderClock(0);
+
         renderMeta(
           events,
-          `batch ${
-            batchSelect.value === 'off' ? 'OFF (Infinity)' : 'ON (200)'
-          } · skipInactive ${skipInactive.checked} · layoutRead ${
-            layoutRead.checked
-          }`,
+          [
+            `batch ${
+              batchSelect.value === 'off' ? 'OFF (Infinity)' : 'ON (200)'
+            }`,
+            `skipInactive ${skipInactive.checked}`,
+            `layoutRead ${layoutRead.checked}`,
+            sourceLabel,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         );
-        clockTimer = setInterval(() => {
-          if (!replayer) return;
-          clockEl.textContent = `t=${formatTime(replayer.getCurrentTime())}`;
-        }, 200);
+        clockTimer = setInterval(updateTransport, 100);
       }
 
-      async function loadFromFile(file) {
-        const raw = JSON.parse(await file.text());
-        events = normalize(raw);
-        renderMeta(events, file.name);
-        build();
+      async function loadFromFiles(fileList) {
+        const files = Array.from(fileList || []).sort((a, b) =>
+          naturalOrder.compare(a.name, b.name),
+        );
+        if (!files.length) return;
+        const parts = [];
+        for (const file of files) {
+          parts.push({
+            name: file.name,
+            events: parseEventFile(await file.text(), file.name),
+          });
+        }
+        applyParts(parts);
       }
 
-      async function loadFromUrl(url) {
+      async function fetchPart(url, name) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`GET ${url} → ${response.status}`);
-        events = normalize(await response.json());
-        renderMeta(events, url);
-        build();
+        return { name: name || url, events: parseEventFile(await response.text(), url) };
+      }
+
+      async function loadFromServer() {
+        const listing = await fetch('/session-parts').catch(() => null);
+        if (listing && listing.ok) {
+          const files = await listing.json();
+          if (files.length) {
+            const parts = [];
+            for (const file of files) {
+              parts.push(await fetchPart(`/session-part/${file.index}`, file.name));
+            }
+            applyParts(parts);
+            return;
+          }
+        }
+        applyParts([await fetchPart('/session.json')]);
       }
 
       $('file').addEventListener('change', (event) => {
-        const file = event.target.files && event.target.files[0];
-        if (file) loadFromFile(file).catch((error) => alert(error.message));
+        loadFromFiles(event.target.files).catch((error) =>
+          alert(error.message),
+        );
+      });
+
+      let dragDepth = 0;
+      window.addEventListener('dragenter', (event) => {
+        if (!event.dataTransfer) return;
+        event.preventDefault();
+        dragDepth += 1;
+        document.body.classList.add('dragging');
+      });
+      window.addEventListener('dragover', (event) => event.preventDefault());
+      window.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) document.body.classList.remove('dragging');
+      });
+      window.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dragDepth = 0;
+        document.body.classList.remove('dragging');
+        loadFromFiles(event.dataTransfer && event.dataTransfer.files).catch(
+          (error) => alert(error.message),
+        );
       });
       $('rebuild').addEventListener('click', () => {
         try {
@@ -758,30 +1137,72 @@
           alert(error.message);
         }
       });
-      $('play').addEventListener('click', () => replayer && replayer.play(replayer.getCurrentTime()));
-      $('pause').addEventListener('click', () => replayer && replayer.pause());
+      playPauseBtn.addEventListener('click', togglePlay);
+      stepBackBtn.addEventListener('click', () => {
+        if (replayer) seek(currentTime() - 5000, playing);
+      });
+      stepFwdBtn.addEventListener('click', () => {
+        if (replayer) seek(currentTime() + 5000, playing);
+      });
+
+      // Seek on release rather than on every input event: each seek replays
+      // synchronously from the last snapshot, so per-pixel seeking locks up.
+      scrub.addEventListener('pointerdown', () => {
+        if (!replayer) return;
+        scrubbing = true;
+        resumeAfterScrub = playing;
+        if (playing) {
+          replayer.pause();
+          position = currentTime();
+        }
+      });
+      scrub.addEventListener('input', () => {
+        scrubbing = true;
+        renderClock(Number(scrub.value));
+      });
+      scrub.addEventListener('change', () => {
+        if (!replayer) return;
+        const target = Number(scrub.value);
+        scrubbing = false;
+        seek(target, resumeAfterScrub);
+        resumeAfterScrub = false;
+      });
+
+      skipInactive.addEventListener('change', () => {
+        if (replayer) {
+          replayer.setConfig({ skipInactive: skipInactive.checked });
+        }
+        if (!skipInactive.checked) skipFlag.hidden = true;
+      });
+      speedInput.addEventListener('change', () => {
+        const speed = Number(speedInput.value) || 1;
+        if (replayer) replayer.setConfig({ speed });
+      });
+
       $('jumpPlay').addEventListener('click', () => {
         if (!replayer) return;
-        const offset = Number(jumpInput.value) * 1000;
-        replayer.pause(offset);
-        replayer.play(offset);
+        seek(Number(jumpInput.value) * 1000, true);
       });
       $('report').addEventListener('click', () => report());
       $('download').addEventListener('click', () => downloadReport());
       loadSessionBtn.addEventListener('click', () => {
-        loadFromUrl('/session.json').catch((error) => alert(error.message));
+        loadFromServer().catch((error) => alert(error.message));
       });
 
-      fetch('/session.json', { method: 'HEAD' })
-        .then((response) => {
-          if (response.ok) {
-            loadSessionBtn.hidden = false;
-            if (params.get('autoload') !== '0') {
-              return loadFromUrl('/session.json');
-            }
-          }
+      fetch('/session-parts')
+        .then(async (response) => {
+          if (!response.ok) return false;
+          const files = await response.json();
+          return files.length > 0;
         })
-        .catch(() => undefined);
+        .catch(() => false)
+        .then((hasServerSession) => {
+          if (!hasServerSession) return;
+          loadSessionBtn.hidden = false;
+          if (params.get('autoload') !== '0') {
+            return loadFromServer().catch((error) => alert(error.message));
+          }
+        });
     </script>
   </body>
 </html>
