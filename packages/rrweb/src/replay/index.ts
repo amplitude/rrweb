@@ -2056,11 +2056,21 @@ export class Replayer {
        * mirror is unchanged and any further pass would repeat this one.
        * Without this check the loop spins until the timeout above, which
        * costs 500ms of the main thread for every such mutation event.
+       *
+       * `appendNode` only re-queues the mutation it was asked to apply, so a
+       * stable length means that pass inserted nothing. Mixed progress still
+       * shrinks the queue (missing parents are dropped, resolved nextIds are
+       * inserted) and the loop continues.
        */
       if (queue.length === pendingCount) {
         this.warn(
-          'Dropping the resolve queue since none of the remaining nodes can be resolved:',
-          queue.slice(),
+          'Dropping the resolve queue since none of the remaining nodes can be resolved',
+          resolveTrees.map((tree) => ({
+            id: tree.value.node.id,
+            parentId: tree.value.parentId,
+            nextId: tree.value.nextId,
+            children: tree.children.length,
+          })),
         );
         break;
       }
