@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.4 (2026-09-24)</small>
+
+- fix(replay): stop the resolve queue loop when it stops making progress (#138) ([ca08fcf](https://github.com/amplitude/rrweb/commit/ca08fcf)), closes [#138](https://github.com/amplitude/rrweb/issues/138)
+
 ## <small>2.1.3 (2026-07-01)</small>
 
 - fix(replay): reset styleMirror per FullSnapshot to match recorder scoping (#132) ([59e31aa](https://github.com/amplitude/rrweb/commit/59e31aa)), closes [#132](https://github.com/amplitude/rrweb/issues/132)
