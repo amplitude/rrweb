@@ -97,6 +97,58 @@ describe('record', function (this: ISuite) {
     `,
   );
 
+  it.each(['mask', 'omit'] as const)(
+    'applies maskAttributeFn to added nodes and descendants (%s)',
+    async (mode) => {
+      await ctx.page.evaluate((mode) => {
+        const { record } = (window as unknown as IWindow).rrweb;
+        record({
+          emit: (window as unknown as IWindow).emit,
+          maskAttributeFn: (key, value, element) => {
+            if (key !== 'title' && key !== 'aria-label') return value;
+            // Also verify that the callback receives the serialized element.
+            if (element.getAttribute('data-mask') !== 'yes') return value;
+            return mode === 'omit' ? null : value.replace(/\S/g, '*');
+          },
+        });
+        const parent = document.createElement('div');
+        parent.setAttribute('data-mask', 'yes');
+        parent.title = 'Jane Member';
+        const child = document.createElement('button');
+        child.setAttribute('data-mask', 'yes');
+        child.setAttribute('aria-label', 'John Member');
+        parent.appendChild(child);
+        document.body.appendChild(parent);
+      }, mode);
+
+      const addedNodes = () =>
+        ctx.events.flatMap((event) =>
+          event.type === EventType.IncrementalSnapshot &&
+          event.data.source === IncrementalSource.Mutation
+            ? event.data.adds.map((add) => add.node)
+            : [],
+        );
+      await vi.waitFor(() => {
+        expect(addedNodes()).toHaveLength(2);
+      });
+      const attributes = addedNodes().map((node) =>
+        'attributes' in node ? node.attributes : {},
+      );
+      expect(attributes).toEqual(
+        expect.arrayContaining([
+          mode === 'omit'
+            ? { 'data-mask': 'yes' }
+            : { 'data-mask': 'yes', title: '**** ******' },
+          mode === 'omit'
+            ? { 'data-mask': 'yes' }
+            : { 'data-mask': 'yes', 'aria-label': '**** ******' },
+        ]),
+      );
+      expect(JSON.stringify(ctx.events)).not.toContain('Jane Member');
+      expect(JSON.stringify(ctx.events)).not.toContain('John Member');
+    },
+  );
+
   it('will only have one full snapshot without checkout config', async () => {
     await ctx.page.evaluate(() => {
       const { record } = (window as unknown as IWindow).rrweb;
