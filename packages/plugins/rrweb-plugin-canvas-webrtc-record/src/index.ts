@@ -38,15 +38,24 @@ export class RRWebPluginCanvasWebRTCRecord {
   private windowPeerMap = new WeakMap<WindowProxy, SimplePeer.Instance>();
   private peerWindowMap = new WeakMap<SimplePeer.Instance, WindowProxy>();
   private signalSendCallback: (msg: RTCSessionDescriptionInit) => void;
+  private readonly recordCrossOriginIframes: boolean;
 
   constructor({
     signalSendCallback,
     peer,
+    recordCrossOriginIframes = false,
   }: {
     signalSendCallback: RRWebPluginCanvasWebRTCRecord['signalSendCallback'];
     peer?: SimplePeer.Instance;
+    /**
+     * Accept canvas commands from other origins. Disabled by default:
+     * a cross-origin parent can otherwise trigger and read canvas streams.
+     * Only enable for pages embedded by trusted origins (GHSA-xjgr-f74v-fx5m).
+     */
+    recordCrossOriginIframes?: boolean;
   }) {
     this.signalSendCallback = signalSendCallback;
+    this.recordCrossOriginIframes = recordCrossOriginIframes;
     window.addEventListener('message', (event: MessageEvent) =>
       this.windowPostMessageHandler(event),
     );
@@ -285,6 +294,14 @@ export class RRWebPluginCanvasWebRTCRecord {
     event: MessageEvent<CrossOriginIframeMessageEventContent> | MessageEvent,
   ) {
     if (!this.isCrossOriginIframeMessageEventContent(event)) return;
+    // Opaque origins serialize to "null" but are not same-origin with each other.
+    if (
+      !this.recordCrossOriginIframes &&
+      (!event.origin ||
+        event.origin === 'null' ||
+        event.origin !== window.origin)
+    )
+      return;
 
     const { type } = event.data.data;
     if (type === 'who-has-canvas') {

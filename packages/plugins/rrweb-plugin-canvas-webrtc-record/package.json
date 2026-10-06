@@ -27,6 +27,8 @@
     "dev": "vite build --watch",
     "build": "turbo run prepublish",
     "check-types": "tsc -noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
     "prepublish": "tsc -noEmit && vite build"
   },
   "repository": {
@@ -46,9 +48,11 @@
     "@amplitude/rrweb": "workspace:^",
     "@amplitude/rrweb-types": "workspace:^",
     "simple-peer-light": "^9.10.0",
+    "happy-dom": "^14.12.0",
     "typescript": "^5.4.5",
     "vite": "^6",
-    "vite-plugin-dts": "^3.9.1"
+    "vite-plugin-dts": "^3.9.1",
+    "vitest": "^1.4.0"
   },
   "peerDependencies": {
     "@amplitude/rrweb": "^2.1.0"

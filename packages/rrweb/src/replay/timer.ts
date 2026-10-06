@@ -52,6 +52,17 @@ export class Timer {
     this.raf = requestAnimationFrame(this.rafCheck.bind(this));
   }
 
+  /**
+   * Advance time while live mode is waiting for the next event.
+   * requestAnimationFrame is not running in that state, so getCurrentTime()
+   * would otherwise stay stuck on the last event. #1864
+   */
+  public updateLiveTime() {
+    if (this.raf === true) {
+      this.rafCheck();
+    }
+  }
+
   private rafCheck() {
     const time = performance.now();
     this.timeOffset += (time - this.lastTimestamp) * this.speed;

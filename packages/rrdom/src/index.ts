@@ -1,6 +1,6 @@
 import { createMirror as createNodeMirror } from '@amplitude/rrweb-snapshot';
 import type { Mirror as NodeMirror } from '@amplitude/rrweb-snapshot';
-import { NodeType as NodeType_2 } from '@amplitude/rrweb-types';
+import { NodeType as RRNodeType } from '@amplitude/rrweb-types';
 import type {
   IMirror,
   serializedNodeWithId,
@@ -411,13 +411,13 @@ export class Mirror implements IMirror<RRNode> {
  */
 export function getDefaultSN(node: IRRNode, id: number): serializedNodeWithId {
   switch (node.RRNodeType) {
-    case NodeType_2.Document:
+    case RRNodeType.Document:
       return {
         id,
         type: node.RRNodeType,
         childNodes: [],
       };
-    case NodeType_2.DocumentType: {
+    case RRNodeType.DocumentType: {
       const doctype = node as IRRDocumentType;
       return {
         id,
@@ -427,7 +427,7 @@ export function getDefaultSN(node: IRRNode, id: number): serializedNodeWithId {
         systemId: doctype.systemId,
       };
     }
-    case NodeType_2.Element:
+    case RRNodeType.Element:
       return {
         id,
         type: node.RRNodeType,
@@ -435,19 +435,19 @@ export function getDefaultSN(node: IRRNode, id: number): serializedNodeWithId {
         attributes: {},
         childNodes: [],
       };
-    case NodeType_2.Text:
+    case RRNodeType.Text:
       return {
         id,
         type: node.RRNodeType,
         textContent: (node as IRRText).textContent || '',
       };
-    case NodeType_2.Comment:
+    case RRNodeType.Comment:
       return {
         id,
         type: node.RRNodeType,
         textContent: (node as IRRComment).textContent || '',
       };
-    case NodeType_2.CDATA:
+    case RRNodeType.CDATA:
       return {
         id,
         type: node.RRNodeType,
@@ -467,7 +467,7 @@ export function printRRDom(rootNode: IRRNode, mirror: IMirror<IRRNode>) {
 }
 function walk(node: IRRNode, mirror: IMirror<IRRNode>, blankSpace: string) {
   let printText = `${blankSpace}${mirror.getId(node)} ${node.toString()}\n`;
-  if (node.RRNodeType === NodeType_2.Element) {
+  if (node.RRNodeType === RRNodeType.Element) {
     const element = node as IRRElement;
     if (element.shadowRoot)
       printText += walk(element.shadowRoot, mirror, blankSpace + '  ');

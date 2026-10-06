@@ -283,7 +283,7 @@ export class Replayer {
               this.virtualDom.mirror,
             );
           } catch (e) {
-            console.warn(e);
+            this.warn(e);
           }
 
         this.virtualDom.destroyTree();
@@ -562,6 +562,11 @@ export class Replayer {
    * Get the actual time offset the player is at now compared to the first event.
    */
   public getCurrentTime(): number {
+    if (this.config.liveMode) {
+      // The live timer stops requesting frames once it runs out of events,
+      // which froze this reading at the last event. #1864
+      this.timer.updateLiveTime();
+    }
     return this.timer.timeOffset + this.getTimeOffset();
   }
 
@@ -737,7 +742,8 @@ export class Replayer {
   // Replays a batch of "sync" events instantly to rebuild the DOM state up
   // to baselineTime. Each event is cast (executed) in order, except:
   //
-  //   - DomContentLoaded, Load, Custom: always skipped (no DOM effect)
+  //   - DomContentLoaded, Load: always skipped (no DOM effect)
+  //   - Custom: applied, so listeners still see events that a seek jumps over
   //   - IncrementalSnapshot BEFORE the last FullSnapshot: skipped, because
   //     FullSnapshot rebuilds the entire DOM from scratch, discarding any
   //     prior incremental mutations
@@ -810,7 +816,6 @@ export class Replayer {
       switch (event.type) {
         case EventType.DomContentLoaded:
         case EventType.Load:
-        case EventType.Custom:
           continue;
         case EventType.IncrementalSnapshot:
           // Skip incremental events before the last FullSnapshot because
@@ -2134,17 +2139,30 @@ export class Replayer {
                   const newSn = mirror.getMeta(
                     target as Node & RRNode,
                   ) as serializedElementNodeWithId;
+                  // Copy attributes onto the node we build, then update the
+                  // mirror meta. Mutating newSn.attributes first aliases the
+                  // object buildNodeWithSN reads, so a later inlined stylesheet
+                  // never replaces the previous one. #1618
+                  const newNode = buildNodeWithSN(
+                    {
+                      ...newSn,
+                      attributes: {
+                        ...newSn.attributes,
+                        ...(mutation.attributes as attributes),
+                      },
+                    },
+                    {
+                      doc: target.ownerDocument as Document, // can be Document or RRDocument
+                      mirror: mirror as Mirror,
+                      skipChild: true,
+                      hackCss: true,
+                      cache: this.cache,
+                    },
+                  );
                   Object.assign(
                     newSn.attributes,
                     mutation.attributes as attributes,
                   );
-                  const newNode = buildNodeWithSN(newSn, {
-                    doc: target.ownerDocument as Document, // can be Document or RRDocument
-                    mirror: mirror as Mirror,
-                    skipChild: true,
-                    hackCss: true,
-                    cache: this.cache,
-                  });
                   const siblingNode = target.nextSibling;
                   const parentNode = target.parentNode;
                   if (newNode && parentNode) {
@@ -2320,7 +2338,8 @@ export class Replayer {
         if (Array.isArray(nestedIndex)) {
           const { positions, index } = getPositionsAndIndex(nestedIndex);
           const nestedRule = getNestedRule(styleSheet.cssRules, positions);
-          nestedRule.insertRule(rule, index);
+          // The parent rule may not exist yet when events arrive out of order.
+          nestedRule?.insertRule(rule, index);
         } else {
           const index =
             nestedIndex === undefined
@@ -2345,7 +2364,7 @@ export class Replayer {
         if (Array.isArray(nestedIndex)) {
           const { positions, index } = getPositionsAndIndex(nestedIndex);
           const nestedRule = getNestedRule(styleSheet.cssRules, positions);
-          nestedRule.deleteRule(index || 0);
+          nestedRule?.deleteRule(index || 0);
         } else {
           styleSheet?.deleteRule(nestedIndex);
         }
@@ -2356,14 +2375,15 @@ export class Replayer {
       }
     });
 
-    if (data.replace)
+    // An empty string is a valid replace/replaceSync and must clear the sheet.
+    if (typeof data.replace === 'string')
       try {
         void styleSheet.replace?.(data.replace);
       } catch (e) {
         // for safety
       }
 
-    if (data.replaceSync)
+    if (typeof data.replaceSync === 'string')
       try {
         styleSheet.replaceSync?.(data.replaceSync);
       } catch (e) {
@@ -2379,20 +2399,24 @@ export class Replayer {
       const rule = getNestedRule(
         styleSheet.rules,
         data.index,
-      ) as unknown as CSSStyleRule;
-      rule.style.setProperty(
-        data.set.property,
-        data.set.value,
-        data.set.priority,
-      );
+      ) as unknown as CSSStyleRule | null;
+      if (rule?.style) {
+        rule.style.setProperty(
+          data.set.property,
+          data.set.value,
+          data.set.priority,
+        );
+      }
     }
 
     if (data.remove) {
       const rule = getNestedRule(
         styleSheet.rules,
         data.index,
-      ) as unknown as CSSStyleRule;
-      rule.style.removeProperty(data.remove.property);
+      ) as unknown as CSSStyleRule | null;
+      if (rule?.style) {
+        rule.style.removeProperty(data.remove.property);
+      }
     }
   }
 

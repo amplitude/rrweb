@@ -1,7 +1,7 @@
 import {
   snapshot,
   type MaskInputOptions,
-  type SlimDOMOptions,
+  slimDOMDefaults,
   createMirror,
 } from '@amplitude/rrweb-snapshot';
 import { initObservers, mutationBuffers } from './observer';
@@ -163,26 +163,7 @@ export function record<T = eventWithTime>(
       ? _maskInputOptions
       : { password: true };
 
-  const slimDOMOptions: SlimDOMOptions =
-    _slimDOMOptions === true || _slimDOMOptions === 'all'
-      ? {
-          script: true,
-          comment: true,
-          headFavicon: true,
-          headWhitespace: true,
-          headMetaSocial: true,
-          headMetaRobots: true,
-          headMetaHttpEquiv: true,
-          headMetaVerification: true,
-          // the following are off for slimDOMOptions === true,
-          // as they destroy some (hidden) info:
-          headMetaAuthorship: _slimDOMOptions === 'all',
-          headMetaDescKeywords: _slimDOMOptions === 'all',
-          headTitleMutations: _slimDOMOptions === 'all',
-        }
-      : _slimDOMOptions
-      ? _slimDOMOptions
-      : {};
+  const slimDOMOptions = slimDOMDefaults(_slimDOMOptions);
 
   polyfill();
 
@@ -629,7 +610,22 @@ export function record<T = eventWithTime>(
       );
     }
     return () => {
-      handlers.forEach((h) => h());
+      handlers.forEach((handler) => {
+        try {
+          handler();
+        } catch (error) {
+          const msg = String(error).toLowerCase();
+          /**
+           * https://github.com/rrweb-io/rrweb/pull/1695
+           * An iframe that was same-origin when recording started can later
+           * navigate cross-origin. Disconnecting its observers then throws,
+           * and that error is expected.
+           */
+          if (!msg.includes('cross-origin')) {
+            console.warn(error);
+          }
+        }
+      });
       processedNodeManager.destroy();
       recording = false;
       unregisterErrorHandler();

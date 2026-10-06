@@ -218,7 +218,12 @@ export function ignoreAttribute(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _value: unknown,
 ): boolean {
-  return (tagName === 'video' || tagName === 'audio') && name === 'autoplay';
+  // tagName and attribute name casing varies between snapshot (lowercase)
+  // and MutationObserver (uppercase). #1921
+  const tag = toLowerCase(tagName);
+  return (
+    (tag === 'video' || tag === 'audio') && toLowerCase(name) === 'autoplay'
+  );
 }
 
 export function _isBlockedElement(
@@ -832,6 +837,36 @@ function lowerIfExists(
   }
 }
 
+/**
+ * Resolve the `slimDOM` record/snapshot option into the concrete flags.
+ * `true` keeps information that can matter for replay; `'all'` also drops
+ * descriptive and authorship metadata.
+ */
+export function slimDOMDefaults(
+  slimDOMOptions: SlimDOMOptions | 'all' | true | false | undefined,
+): SlimDOMOptions {
+  if (slimDOMOptions === true || slimDOMOptions === 'all') {
+    return {
+      script: true,
+      comment: true,
+      headFavicon: true,
+      headWhitespace: true,
+      headMetaSocial: true,
+      headMetaRobots: true,
+      headMetaHttpEquiv: true,
+      headMetaVerification: true,
+      // the following are off for slimDOMOptions === true,
+      // as they destroy some (hidden) info:
+      headMetaAuthorship: slimDOMOptions === 'all',
+      headMetaDescKeywords: slimDOMOptions === 'all',
+      headTitleMutations: slimDOMOptions === 'all',
+    };
+  } else if (slimDOMOptions) {
+    return slimDOMOptions;
+  }
+  return {};
+}
+
 function slimDOMExcluded(
   sn: serializedNode,
   slimDOMOptions: SlimDOMOptions,
@@ -846,9 +881,8 @@ function slimDOMExcluded(
       (sn.tagName === 'script' ||
         // (module)preload link
         (sn.tagName === 'link' &&
-          (sn.attributes.rel === 'preload' ||
-            sn.attributes.rel === 'modulepreload') &&
-          sn.attributes.as === 'script') ||
+          ((sn.attributes.rel === 'preload' && sn.attributes.as === 'script') ||
+            sn.attributes.rel === 'modulepreload')) ||
         // prefetch link
         (sn.tagName === 'link' &&
           sn.attributes.rel === 'prefetch' &&
@@ -1387,24 +1421,7 @@ function snapshot(
           password: true,
         }
       : maskAllInputs;
-  const slimDOMOptions: SlimDOMOptions =
-    slimDOM === true || slimDOM === 'all'
-      ? // if true: set of sensible options that should not throw away any information
-        {
-          script: true,
-          comment: true,
-          headFavicon: true,
-          headWhitespace: true,
-          headMetaDescKeywords: slimDOM === 'all', // destructive
-          headMetaSocial: true,
-          headMetaRobots: true,
-          headMetaHttpEquiv: true,
-          headMetaAuthorship: true,
-          headMetaVerification: true,
-        }
-      : slimDOM === false
-      ? {}
-      : slimDOM;
+  const slimDOMOptions = slimDOMDefaults(slimDOM);
   return serializeNodeWithId(n, {
     doc: n,
     mirror,
