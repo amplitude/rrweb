@@ -2426,10 +2426,7 @@ export class Replayer {
     if (mutationNode.type === NodeType.Document) {
       return mutationNode.adoptedStyleSheets;
     }
-    if (
-      mutationNode.type === NodeType.Element &&
-      (mutationNode as serializedElementNodeWithId).isShadowHost
-    ) {
+    if (mutationNode.type === NodeType.Element && mutationNode.isShadowHost) {
       return mutationNode.adoptedStyleSheets;
     }
     if (hasShadowRoot(builtNode as Node)) {
@@ -2442,8 +2439,9 @@ export class Replayer {
     mutationNode: addedNodeMutation['node'],
     builtNode: Node | RRNode,
   ) {
-    if (mutationNode.type !== NodeType.Element) return;
-    if (!(mutationNode as serializedElementNodeWithId).isShadowHost) return;
+    if (mutationNode.type !== NodeType.Element || !mutationNode.isShadowHost) {
+      return;
+    }
     const el = builtNode as Element;
     if (el.nodeType !== Node.ELEMENT_NODE || hasShadowRoot(el)) return;
     el.attachShadow({ mode: 'open' });
