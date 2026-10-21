@@ -976,7 +976,7 @@ export function serializeNodeWithId(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
-    /** @internal Tracks styleIds whose rules have already been serialized; shared across recursive calls within one document traversal. Not forwarded into iframe documents because CSSStyleSheet instances cannot be shared across browsing contexts. */
+    /** @internal Tracks recording-side styleIds whose CSS rules were already inlined; shared across the document tree and iframe snapshots for dedupe with later mutation adds. */
     _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
@@ -1228,6 +1228,7 @@ export function serializeNodeWithId(
             preserveWhiteSpace,
             onSerialize,
             onAdoptedStyleSheet,
+            _emittedStyleIds: emittedStyleIds,
             onIframeLoad,
             iframeLoadTimeout,
             onStylesheetLoad,
