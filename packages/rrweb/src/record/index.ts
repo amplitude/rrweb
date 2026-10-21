@@ -376,9 +376,6 @@ export function record<T = eventWithTime>(
 
     // When we take a full snapshot, old tracked StyleSheets need to be removed.
     stylesheetManager.reset();
-    mutationBuffers.forEach((buf) =>
-      buf.clearMutationAdoptedStyleSheetEmissions(),
-    );
 
     shadowDomManager.init();
 
@@ -415,6 +412,9 @@ export function record<T = eventWithTime>(
       // ids are always fresh and in sync with the snapshot's serialized styleIds.
       onAdoptedStyleSheet: captureAdoptedStyleSheets
         ? (sheet) => stylesheetManager.styleMirror.add(sheet)
+        : undefined,
+      _emittedStyleIds: captureAdoptedStyleSheets
+        ? stylesheetManager.getInlinedAdoptedStyleSheetRuleIds()
         : undefined,
       onIframeLoad: (iframe, childSn) => {
         iframeManager.attachIframe(iframe, childSn);

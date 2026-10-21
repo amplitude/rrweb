@@ -1323,6 +1323,8 @@ function snapshot(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
+    /** @internal Tracks styleIds whose rules were already serialized; shared with mutation adds. */
+    _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
       node: serializedElementNodeWithId,
@@ -1355,6 +1357,7 @@ function snapshot(
     preserveWhiteSpace,
     onSerialize,
     onAdoptedStyleSheet,
+    _emittedStyleIds,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,
@@ -1425,6 +1428,7 @@ function snapshot(
     preserveWhiteSpace,
     onSerialize,
     onAdoptedStyleSheet,
+    _emittedStyleIds,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,

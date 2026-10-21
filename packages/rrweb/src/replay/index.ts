@@ -324,9 +324,7 @@ export class Replayer {
 
         this.snapshotAdoptedStyleSheetQueue.forEach(
           ({ id, adoptedStyleSheets }) => {
-            const node = this.mirror.getNode(id);
-            if (node)
-              this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
+            this.applyQueuedSnapshotAdoptedStyleSheets(id, adoptedStyleSheets);
           },
         );
         this.snapshotAdoptedStyleSheetQueue = [];
@@ -2411,6 +2409,24 @@ export class Replayer {
       ) as unknown as CSSStyleRule;
       rule.style.removeProperty(data.remove.property);
     }
+  }
+
+  private applyQueuedSnapshotAdoptedStyleSheets(
+    id: number,
+    adoptedStyleSheets: serializedAdoptedStyleSheet[],
+  ) {
+    const node = this.mirror.getNode(id);
+    if (!node) return;
+    const meta = this.mirror.getMeta(node);
+    if (
+      meta?.type === NodeType.Element &&
+      meta.isShadowHost &&
+      node.nodeType === Node.ELEMENT_NODE &&
+      !hasShadowRoot(node as Element)
+    ) {
+      (node as Element).attachShadow({ mode: 'open' });
+    }
+    this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
   }
 
   private inlineAdoptedStyleSheetsFromMutationNode(

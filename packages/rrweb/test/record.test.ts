@@ -731,6 +731,54 @@ describe('record', function (this: ISuite) {
     });
   });
 
+  it('dedupes shared adoptedStyleSheets between full snapshot and mutation add when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const sharedSheet = new CSSStyleSheet();
+        sharedSheet.replaceSync!('.icon { width: 16px; }');
+
+        const existingHost = document.createElement('div');
+        existingHost.id = 'existing-icon';
+        document.body.appendChild(existingHost);
+        existingHost.attachShadow({ mode: 'open' });
+        existingHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          rrweb.record.takeFullSnapshot(true);
+          setTimeout(() => {
+            const newHost = document.createElement('div');
+            newHost.id = 'new-icon';
+            document.body.appendChild(newHost);
+            newHost.attachShadow({ mode: 'open' });
+            newHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+            resolve(undefined);
+          }, 10);
+        }, 10);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: {
+        adds?: Array<{ node?: { adoptedStyleSheets?: { rules: unknown[] }[] } }>;
+      };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]?.rules).toHaveLength(0);
+  });
+
   it('dedupes shared adoptedStyleSheets across mutation adds when captureAdoptedStyleSheets is true', async () => {
     await ctx.page.evaluate(() => {
       return new Promise((resolve) => {
