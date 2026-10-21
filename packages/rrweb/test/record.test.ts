@@ -770,7 +770,9 @@ describe('record', function (this: ISuite) {
         (e.data as { source?: number }).source === IncrementalSource.Mutation,
     ) as eventWithTime & {
       data: {
-        adds?: Array<{ node?: { adoptedStyleSheets?: { rules: unknown[] }[] } }>;
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
       };
     };
     const addedHost = mutation?.data.adds?.find(
