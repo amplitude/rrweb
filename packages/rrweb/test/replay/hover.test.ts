@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { vi } from 'vitest';
-import { launchPuppeteer, waitForRAF } from '../utils';
+import { hideMouseAnimation, launchPuppeteer, waitForRAF } from '../utils';
 import { toMatchImageSnapshot } from 'jest-image-snapshot';
 import type * as puppeteer from 'puppeteer';
 import events from '../events/hover';
@@ -24,7 +24,7 @@ describe('replayer', function () {
   let page: ISuite['page'];
 
   beforeAll(async () => {
-    browser = await launchPuppeteer({ devtools: true });
+    browser = await launchPuppeteer();
 
     const bundlePath = path.resolve(__dirname, '../../dist/rrweb.umd.cjs');
     const stylePath = path.resolve(
@@ -43,6 +43,7 @@ describe('replayer', function () {
     });
     await page.evaluate(code);
     await page.evaluate(`let events = ${JSON.stringify(events)}`);
+    await hideMouseAnimation(page);
 
     page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
   });
@@ -59,16 +60,27 @@ describe('replayer', function () {
     it('should trigger hover on mouseDown', async () => {
       await page.evaluate(`
       const { Replayer } = rrweb;
-      const replayer = new Replayer(events);
-      replayer.pause(110); // mouseDown event is at 100
+      window.replayer = new Replayer(events);
+      window.replayer.pause(110); // mouseDown event is at 100
     `);
 
-      await waitForRAF(page);
+      await page.waitForFunction(() => {
+        const iframe = document.querySelector('.replayer-wrapper iframe');
+        const doc = iframe?.contentDocument;
+        const div = doc?.querySelector('div');
+        if (!div || !doc?.defaultView) return false;
+        return (
+          doc.defaultView.getComputedStyle(div).backgroundColor ===
+          'rgb(255, 215, 0)'
+        );
+      });
+
       await waitForRAF(page);
 
       const image = await page.screenshot();
       expect(image).toMatchImageSnapshot({
-        failureThreshold: 40,
+        failureThreshold: 0.05,
+        failureThresholdType: 'percent',
       });
     });
   });
