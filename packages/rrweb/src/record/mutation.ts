@@ -194,6 +194,8 @@ export default class MutationBuffer {
   private canvasManager: observerParam['canvasManager'];
   private processedNodeManager: observerParam['processedNodeManager'];
   private captureAdoptedStyleSheets: observerParam['captureAdoptedStyleSheets'];
+  /** styleIds whose CSS rules were already inlined on a prior mutation add */
+  private mutationAdoptedStyleSheetEmissionIds = new Set<number>();
   private unattachedDoc: HTMLDocument;
 
   public init(options: MutationBufferParam) {
@@ -255,9 +257,14 @@ export default class MutationBuffer {
     this.emit();
   }
 
+  public clearMutationAdoptedStyleSheetEmissions() {
+    this.mutationAdoptedStyleSheetEmissionIds.clear();
+  }
+
   public reset() {
     this.shadowDomManager.reset();
     this.canvasManager.reset();
+    this.clearMutationAdoptedStyleSheetEmissions();
   }
 
   public processMutations = (mutations: mutationRecord[]) => {
@@ -356,6 +363,9 @@ export default class MutationBuffer {
         },
         onAdoptedStyleSheet: this.captureAdoptedStyleSheets
           ? (sheet) => this.stylesheetManager.styleMirror.add(sheet)
+          : undefined,
+        _emittedStyleIds: this.captureAdoptedStyleSheets
+          ? this.mutationAdoptedStyleSheetEmissionIds
           : undefined,
         cssCaptured,
       });

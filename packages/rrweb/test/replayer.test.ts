@@ -1096,7 +1096,7 @@ describe('replayer', function () {
     await checkCorrectness();
   });
 
-  it('can replay adoptedStyleSheets embedded inline on a mutation add (SR-4938)', async () => {
+  it('can replay adoptedStyleSheets embedded inline on a mutation add', async () => {
     await page.evaluate(`
       events = ${JSON.stringify(adoptedStyleSheetMutationAdd)};
       const { Replayer } = rrweb;
@@ -1120,6 +1120,33 @@ describe('replayer', function () {
       }),
     ).toEqual({
       hostWidth: 24,
+      svgWidth: 24,
+      sheetCount: 1,
+    });
+  });
+
+  it('applies inline adoptedStyleSheets from mutation adds when seeking with useVirtualDom', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetMutationAdd)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { useVirtualDom: true });
+      replayer.pause(500);
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    expect(
+      await contentDocument!.evaluate(() => {
+        const host = document.querySelector('#dynamic-icon') as HTMLElement;
+        const svg = host?.shadowRoot?.querySelector('svg') as SVGElement;
+        if (!host || !svg) return null;
+        return {
+          svgWidth: svg.getBoundingClientRect().width,
+          sheetCount: host.shadowRoot!.adoptedStyleSheets.length,
+        };
+      }),
+    ).toEqual({
       svgWidth: 24,
       sheetCount: 1,
     });

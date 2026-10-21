@@ -4,9 +4,9 @@ import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
 /**
  * Simulates a Lit-style web component added after the initial full snapshot via
  * a DOM mutation. adoptedStyleSheets are embedded inline on the added shadow host
- * node (captureAdoptedStyleSheets), with no incremental AdoptedStyleSheet event.
- * This is the SR-4938 failure mode: setTimeout(0) incremental events for
- * post-snapshot shadow roots were silently dropped, leaving icons unstyled.
+ * node when captureAdoptedStyleSheets is enabled, with no incremental
+ * AdoptedStyleSheet event. Simulates deferred incremental events for
+ * post-snapshot shadow roots being dropped, leaving icons unstyled.
  */
 const now = Date.now();
 

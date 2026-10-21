@@ -96,7 +96,7 @@ export function record<T = eventWithTime>(
     userTriggeredOnInput = false,
     collectFonts = false,
     inlineImages = false,
-    captureAdoptedStyleSheets = true,
+    captureAdoptedStyleSheets = false,
     plugins,
     keepIframeSrcFn = () => false,
     ignoreCSSAttributes = new Set([]),
@@ -376,6 +376,9 @@ export function record<T = eventWithTime>(
 
     // When we take a full snapshot, old tracked StyleSheets need to be removed.
     stylesheetManager.reset();
+    mutationBuffers.forEach((buf) =>
+      buf.clearMutationAdoptedStyleSheetEmissions(),
+    );
 
     shadowDomManager.init();
 

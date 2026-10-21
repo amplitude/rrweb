@@ -1864,17 +1864,24 @@ export class Replayer {
         return;
       }
       const afterAppend = (node: Node | RRNode, id: number) => {
+        const inlineAdoptedStyleSheets =
+          this.inlineAdoptedStyleSheetsFromMutationNode(mutation.node, node);
+
+        if (inlineAdoptedStyleSheets && this.usingVirtualDom) {
+          this.snapshotAdoptedStyleSheetQueue.push({
+            id,
+            adoptedStyleSheets: inlineAdoptedStyleSheets,
+          });
+        }
+
         // Skip the plugin onBuild callback for virtual dom
         if (this.usingVirtualDom) return;
         applyDialogToTopLevel(node);
-        if (
-          'adoptedStyleSheets' in mutation.node &&
-          mutation.node.adoptedStyleSheets?.length &&
-          (hasShadowRoot(node) || mutation.node.type === NodeType.Document)
-        ) {
+        if (inlineAdoptedStyleSheets) {
+          this.ensureShadowHostForInlineAdoptedStyles(mutation.node, node);
           this.applySnapshotAdoptedStyleSheets(
             node as Node,
-            mutation.node.adoptedStyleSheets,
+            inlineAdoptedStyleSheets,
           );
         }
         for (const plugin of this.config.plugins || []) {
@@ -2404,6 +2411,42 @@ export class Replayer {
       ) as unknown as CSSStyleRule;
       rule.style.removeProperty(data.remove.property);
     }
+  }
+
+  private inlineAdoptedStyleSheetsFromMutationNode(
+    mutationNode: addedNodeMutation['node'],
+    builtNode: Node | RRNode,
+  ): serializedAdoptedStyleSheet[] | null {
+    if (
+      !('adoptedStyleSheets' in mutationNode) ||
+      !mutationNode.adoptedStyleSheets?.length
+    ) {
+      return null;
+    }
+    if (mutationNode.type === NodeType.Document) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    if (
+      mutationNode.type === NodeType.Element &&
+      (mutationNode as serializedElementNodeWithId).isShadowHost
+    ) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    if (hasShadowRoot(builtNode as Node)) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    return null;
+  }
+
+  private ensureShadowHostForInlineAdoptedStyles(
+    mutationNode: addedNodeMutation['node'],
+    builtNode: Node | RRNode,
+  ) {
+    if (mutationNode.type !== NodeType.Element) return;
+    if (!(mutationNode as serializedElementNodeWithId).isShadowHost) return;
+    const el = builtNode as Element;
+    if (el.nodeType !== Node.ELEMENT_NODE || hasShadowRoot(el)) return;
+    el.attachShadow({ mode: 'open' });
   }
 
   private applySnapshotAdoptedStyleSheets(
