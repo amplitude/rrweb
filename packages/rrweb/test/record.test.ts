@@ -763,12 +763,15 @@ describe('record', function (this: ISuite) {
         (e.data as { source?: number }).source === IncrementalSource.Mutation,
     ) as eventWithTime & {
       data: {
-        adds?: Array<{ node?: { adoptedStyleSheets?: { rules: unknown[] }[] } }>;
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
       };
     };
     const hostsWithSheets =
-      mutation?.data.adds?.filter((add) => add.node?.adoptedStyleSheets?.length) ??
-      [];
+      mutation?.data.adds?.filter(
+        (add) => add.node?.adoptedStyleSheets?.length,
+      ) ?? [];
     expect(hostsWithSheets).toHaveLength(2);
     const [first, second] = hostsWithSheets.map(
       (add) => add.node!.adoptedStyleSheets![0],
