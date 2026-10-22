@@ -266,13 +266,16 @@ function initMouseInteractionObserver({
       }
       const id = mirror.getId(target);
       const { clientX, clientY } = e;
-      callbackWrapper(mouseInteractionCb)({
-        type: MouseInteractions[thisEventKey],
-        id,
-        x: clientX,
-        y: clientY,
-        ...(pointerType !== null && { pointerType }),
-      });
+      callbackWrapper(mouseInteractionCb)(
+        {
+          type: MouseInteractions[thisEventKey],
+          id,
+          x: clientX,
+          y: clientY,
+          ...(pointerType !== null && { pointerType }),
+        },
+        event,
+      );
     };
   };
   Object.keys(MouseInteractions)
@@ -1234,7 +1237,8 @@ function mergeHooks(o: observerParam, hooks: hooksParam) {
     if (hooks.mouseInteraction) {
       hooks.mouseInteraction(...p);
     }
-    mouseInteractionCb(...p);
+    // Keep native DOM objects out of the recorder's data path.
+    mouseInteractionCb(p[0]);
   };
   o.scrollCb = (...p: Arguments<scrollCallback>) => {
     if (hooks.scroll) {

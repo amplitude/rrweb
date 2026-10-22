@@ -421,7 +421,11 @@ type mouseInteractionParam = {
   pointerType?: PointerTypes;
 };
 
-export type mouseInteractionCallBack = (d: mouseInteractionParam) => void;
+/** Native event is hook-only context; it must never be included in recorded data. */
+export type mouseInteractionCallBack = (
+  d: mouseInteractionParam,
+  nativeEvent?: MouseEvent | TouchEvent,
+) => void;
 
 export type scrollPosition = {
   id: number;
