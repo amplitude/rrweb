@@ -673,6 +673,7 @@ describe('record', function (this: ISuite) {
         const { rrweb, emit } = window as unknown as IWindow;
         rrweb.record({
           emit,
+          captureAdoptedStyleSheets: true,
         });
 
         setTimeout(() => {
@@ -684,6 +685,150 @@ describe('record', function (this: ISuite) {
     });
     await waitForRAF(ctx.page);
     await assertSnapshot(ctx.events);
+  });
+
+  it('inlines adoptedStyleSheets on dynamically added shadow hosts when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          const host = document.createElement('div');
+          host.id = 'dynamic-icon';
+          document.body.appendChild(host);
+          host.attachShadow({ mode: 'open' });
+          const sheet = new CSSStyleSheet();
+          sheet.replaceSync!('svg { width: 24px; height: 24px; }');
+          host.shadowRoot!.adoptedStyleSheets = [sheet];
+          const svg = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg',
+          );
+          svg.setAttribute('viewBox', '0 0 24 24');
+          host.shadowRoot!.appendChild(svg);
+          resolve(undefined);
+        }, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: { adds?: Array<{ node?: { adoptedStyleSheets?: unknown[] } }> };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]).toMatchObject({
+      rules: [{ rule: 'svg { width: 24px; height: 24px; }', index: 0 }],
+    });
+  });
+
+  it('dedupes shared adoptedStyleSheets between full snapshot and mutation add when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const sharedSheet = new CSSStyleSheet();
+        sharedSheet.replaceSync!('.icon { width: 16px; }');
+
+        const existingHost = document.createElement('div');
+        existingHost.id = 'existing-icon';
+        document.body.appendChild(existingHost);
+        existingHost.attachShadow({ mode: 'open' });
+        existingHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          rrweb.record.takeFullSnapshot(true);
+          setTimeout(() => {
+            const newHost = document.createElement('div');
+            newHost.id = 'new-icon';
+            document.body.appendChild(newHost);
+            newHost.attachShadow({ mode: 'open' });
+            newHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+            resolve(undefined);
+          }, 10);
+        }, 10);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: {
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
+      };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]?.rules).toHaveLength(0);
+  });
+
+  it('dedupes shared adoptedStyleSheets across mutation adds when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          const sharedSheet = new CSSStyleSheet();
+          sharedSheet.replaceSync!('.icon { width: 16px; }');
+
+          for (let i = 0; i < 2; i++) {
+            const host = document.createElement('div');
+            host.className = 'icon-host';
+            document.body.appendChild(host);
+            host.attachShadow({ mode: 'open' });
+            host.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+          }
+          resolve(undefined);
+        }, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: {
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
+      };
+    };
+    const hostsWithSheets =
+      mutation?.data.adds?.filter(
+        (add) => add.node?.adoptedStyleSheets?.length,
+      ) ?? [];
+    expect(hostsWithSheets).toHaveLength(2);
+    const [first, second] = hostsWithSheets.map(
+      (add) => add.node!.adoptedStyleSheets![0],
+    );
+    expect(first.styleId).toBe(second.styleId);
+    expect(first.rules).toHaveLength(1);
+    expect(second.rules).toHaveLength(0);
   });
 
   it('does not inline adoptedStyleSheets when captureAdoptedStyleSheets is false', async () => {
