@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import {
   EventType,
   IncrementalSource,
+  MouseInteractions,
   eventWithTime,
   listenerHandler,
   selectionData,
@@ -96,6 +97,51 @@ describe('record', function (this: ISuite) {
       </html>
     `,
   );
+
+  it('passes native interactions to hooks without adding them to recorded data', async () => {
+    const result = await ctx.page.evaluate(() => {
+      const { record } = (window as unknown as IWindow).rrweb;
+      const events: eventWithTime[] = [];
+      const native = new MouseEvent('click', {
+        bubbles: true,
+        ctrlKey: true,
+        detail: 0,
+      });
+      let sameEvent = false;
+      let ctrlKey = false;
+      let detail = -1;
+      const stop = record({
+        emit: (event) => events.push(event),
+        hooks: {
+          mouseInteraction: (_data, event) => {
+            sameEvent = event === native;
+            ctrlKey = event?.ctrlKey ?? false;
+            detail = event?.detail ?? -1;
+          },
+        },
+      });
+      document.querySelector('input')!.dispatchEvent(native);
+      stop?.();
+      return { sameEvent, ctrlKey, detail, events };
+    });
+    expect(result.sameEvent).toBe(true);
+    expect(result.ctrlKey).toBe(true);
+    expect(result.detail).toBe(0);
+    const clicks = result.events.filter(
+      (event) =>
+        event.type === EventType.IncrementalSnapshot &&
+        event.data.source === IncrementalSource.MouseInteraction &&
+        event.data.type === MouseInteractions.Click,
+    );
+    expect(clicks).toHaveLength(1);
+    expect(Object.keys(clicks[0].data).sort()).toEqual([
+      'id',
+      'source',
+      'type',
+      'x',
+      'y',
+    ]);
+  });
 
   it('will only have one full snapshot without checkout config', async () => {
     await ctx.page.evaluate(() => {

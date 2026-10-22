@@ -665,5 +665,7 @@ record.takeFullSnapshot = (isCheckout?: boolean) => {
 };
 
 record.mirror = mirror;
+/** Allows hosts to reuse native clicks without installing another listener. */
+record.supportsNativeMouseInteraction = true;
 
 export default record;
