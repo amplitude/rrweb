@@ -1,6 +1,6 @@
 {
   "name": "@amplitude/rrweb-types",
-  "version": "2.1.2",
+  "version": "2.1.5",
   "publishConfig": {
     "access": "public"
   },

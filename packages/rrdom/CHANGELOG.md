@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.5 (2026-10-22)</small>
+
+**Note:** Version bump only for package @amplitude/rrdom
+
 ## <small>2.1.2 (2026-06-30)</small>
 
 - fix: resolve browser cicd issues (#131) ([546e481](https://github.com/amplitude/rrweb/commit/546e481)), closes [#131](https://github.com/amplitude/rrweb/issues/131)

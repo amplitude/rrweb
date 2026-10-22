@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.5 (2026-10-22)</small>
+
+**Note:** Version bump only for package @amplitude/rrweb-capture
+
 ## <small>2.1.2 (2026-06-30)</small>
 
 - feat: add dom target field (#128) ([5452438](https://github.com/amplitude/rrweb/commit/5452438)), closes [#128](https://github.com/amplitude/rrweb/issues/128)

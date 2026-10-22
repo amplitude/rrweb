@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.5 (2026-10-22)</small>
+
+- feat(record): expose native interactions to recorder hooks (#142) ([170c07a](https://github.com/amplitude/rrweb/commit/170c07a)), closes [#142](https://github.com/amplitude/rrweb/issues/142)
+- Apply formatting changes ([761ea40](https://github.com/amplitude/rrweb/commit/761ea40))
+- Apply formatting changes ([7fc4256](https://github.com/amplitude/rrweb/commit/7fc4256))
+- fix(record,replay): inline adoptedStyleSheets on mutation add (SR-4938) ([41d306d](https://github.com/amplitude/rrweb/commit/41d306d))
+- fix(record,replay): opt-in captureAdoptedStyleSheets with mutation dedupe ([8ffdd4a](https://github.com/amplitude/rrweb/commit/8ffdd4a))
+- fix(record,replay): shared adoptedStyleSheet rule dedupe across buffers ([cb2e59c](https://github.com/amplitude/rrweb/commit/cb2e59c))
+- fix: restore incremental adoptedStyleSheet emit and correct SR-4938 fixture ([3fc4121](https://github.com/amplitude/rrweb/commit/3fc4121))
+- fix(replay): narrow adoptedStyleSheets access on mutation nodes ([e1fd5b1](https://github.com/amplitude/rrweb/commit/e1fd5b1))
+- fix(replay): remove unnecessary type assertions for eslint ([37ba722](https://github.com/amplitude/rrweb/commit/37ba722))
+- test(replay): stabilize hover image snapshot on CI ([747df8d](https://github.com/amplitude/rrweb/commit/747df8d))
+
 ## <small>2.1.4 (2026-09-24)</small>
 
 - fix(replay): stop the resolve queue loop when it stops making progress (#138) ([ca08fcf](https://github.com/amplitude/rrweb/commit/ca08fcf)), closes [#138](https://github.com/amplitude/rrweb/issues/138)

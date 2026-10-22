@@ -1,6 +1,6 @@
 {
   "name": "@amplitude/rrweb-snapshot",
-  "version": "2.1.2",
+  "version": "2.1.5",
   "description": "rrweb's component to take a snapshot of DOM, aka DOM serializer",
   "scripts": {
     "retest": "vitest run",
