@@ -13,7 +13,17 @@ type BasePrototypeCache = {
 };
 
 const testableAccessors = {
-  Node: ['childNodes', 'parentNode', 'parentElement', 'textContent'] as const,
+  Node: [
+    'childNodes',
+    'parentNode',
+    'parentElement',
+    'textContent',
+    'ownerDocument',
+    'firstChild',
+    'lastChild',
+    'nextSibling',
+    'previousSibling',
+  ] as const,
   ShadowRoot: ['host', 'styleSheets'] as const,
   Element: ['shadowRoot', 'querySelector', 'querySelectorAll'] as const,
   MutationObserver: [] as const,
@@ -27,6 +37,9 @@ const testableMethods = {
 } as const;
 
 const untaintedBasePrototype: Partial<BasePrototypeCache> = {};
+const untaintedBaseIframeCleanup: Partial<
+  Record<keyof BasePrototypeCache, () => void>
+> = {};
 
 type WindowWithZone = typeof globalThis & {
   Zone?: {
@@ -104,6 +117,7 @@ export function getUntaintedPrototype<T extends keyof BasePrototypeCache>(
 
   try {
     const iframeEl = document.createElement('iframe');
+    iframeEl.style.display = 'none';
     document.body.appendChild(iframeEl);
     const win = iframeEl.contentWindow;
     if (!win) return candidate.prototype as BasePrototypeCache[T];
@@ -111,10 +125,23 @@ export function getUntaintedPrototype<T extends keyof BasePrototypeCache>(
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
     const untaintedObject = (win as any)[key]
       .prototype as BasePrototypeCache[T];
-    // cleanup
-    document.body.removeChild(iframeEl);
 
-    if (!untaintedObject) return defaultPrototype;
+    if (!untaintedObject) {
+      iframeEl.remove();
+      return defaultPrototype;
+    }
+
+    // WebKit drops MutationObserver callbacks once the iframe that owns the
+    // observer's execution context is detached (webkit.org/b/179224). Keep
+    // that iframe mounted on Safari and remove it when recording stops. #1854
+    const ua = navigator.userAgent;
+    if (ua.includes('Safari') && !ua.includes('Chrome')) {
+      iframeEl.classList.add('rr-block');
+      iframeEl.setAttribute('__rrwebUntaintedMutationObserver', '');
+      untaintedBaseIframeCleanup[key] = () => iframeEl.remove();
+    } else {
+      iframeEl.remove();
+    }
 
     return (untaintedBasePrototype[key] = untaintedObject);
   } catch {
@@ -122,9 +149,11 @@ export function getUntaintedPrototype<T extends keyof BasePrototypeCache>(
   }
 }
 
-const untaintedAccessorCache: Record<
-  string,
-  (this: PrototypeOwner, ...args: unknown[]) => unknown
+const untaintedAccessorCache: Partial<
+  Record<
+    keyof BasePrototypeCache,
+    Record<string, (this: PrototypeOwner, ...args: unknown[]) => unknown>
+  >
 > = {};
 
 export function getUntaintedAccessor<
@@ -135,11 +164,8 @@ export function getUntaintedAccessor<
   instance: BasePrototypeCache[K],
   accessor: T,
 ): BasePrototypeCache[K][T] {
-  const cacheKey = `${key}.${String(accessor)}`;
-  if (untaintedAccessorCache[cacheKey])
-    return untaintedAccessorCache[cacheKey].call(
-      instance,
-    ) as BasePrototypeCache[K][T];
+  const cached = untaintedAccessorCache[key]?.[accessor as string];
+  if (cached) return cached.call(instance) as BasePrototypeCache[K][T];
 
   const untaintedPrototype = getUntaintedPrototype(key);
   // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -150,7 +176,13 @@ export function getUntaintedAccessor<
 
   if (!untaintedAccessor) return instance[accessor];
 
-  untaintedAccessorCache[cacheKey] = untaintedAccessor;
+  const bucket =
+    untaintedAccessorCache[key] ??
+    (untaintedAccessorCache[key] = Object.create(null) as Record<
+      string,
+      (this: PrototypeOwner, ...args: unknown[]) => unknown
+    >);
+  bucket[accessor as string] = untaintedAccessor;
 
   return untaintedAccessor.call(instance) as BasePrototypeCache[K][T];
 }
@@ -186,6 +218,10 @@ export function getUntaintedMethod<
   return untaintedMethod.bind(instance) as BasePrototypeCache[K][T];
 }
 
+export function ownerDocument(n: Node): Document | null {
+  return getUntaintedAccessor('Node', n, 'ownerDocument');
+}
+
 export function childNodes(n: Node): NodeListOf<Node> {
   return getUntaintedAccessor('Node', n, 'childNodes');
 }
@@ -200,6 +236,22 @@ export function parentElement(n: Node): HTMLElement | null {
 
 export function textContent(n: Node): string | null {
   return getUntaintedAccessor('Node', n, 'textContent');
+}
+
+export function firstChild(n: Node): ChildNode | null {
+  return getUntaintedAccessor('Node', n, 'firstChild');
+}
+
+export function lastChild(n: Node): ChildNode | null {
+  return getUntaintedAccessor('Node', n, 'lastChild');
+}
+
+export function nextSibling(n: Node): ChildNode | null {
+  return getUntaintedAccessor('Node', n, 'nextSibling');
+}
+
+export function previousSibling(n: Node): ChildNode | null {
+  return getUntaintedAccessor('Node', n, 'previousSibling');
 }
 
 export function contains(n: Node, other: Node): boolean {
@@ -235,15 +287,88 @@ export function querySelectorAll(
   return getUntaintedAccessor('Element', n, 'querySelectorAll')(selectors);
 }
 
-export function mutationObserverCtor(): (typeof MutationObserver)['prototype']['constructor'] {
-  return getUntaintedPrototype('MutationObserver').constructor;
+/**
+ * @deprecated Use {@link mutationObserverCtor}, which also returns the cleanup
+ * for the Safari iframe that holds the untainted observer.
+ */
+export function mutationObserver(): (typeof MutationObserver)['prototype']['constructor'] {
+  return mutationObserverCtor()[0];
+}
+
+export function mutationObserverCtor(): [
+  (typeof MutationObserver)['prototype']['constructor'],
+  () => void,
+] {
+  return [
+    getUntaintedPrototype('MutationObserver').constructor,
+    untaintedBaseIframeCleanup['MutationObserver'] ??
+      (() => {
+        // Only Safari keeps the untainted-prototype iframe attached.
+      }),
+  ];
+}
+
+// Guard against libraries that replace Date.now with a non-epoch clock.
+let nowTimestamp = Date.now;
+
+if (!(/*@__PURE__*/ /[1-9][0-9]{12}/.test(Date.now().toString()))) {
+  nowTimestamp = () => new Date().getTime();
+}
+export { nowTimestamp };
+
+// copy from https://github.com/getsentry/sentry-javascript/blob/b2109071975af8bf0316d3b5b38f519bdaf5dc15/packages/utils/src/object.ts
+export function patch(
+  source: { [key: string]: any },
+  name: string,
+  replacement: (...args: unknown[]) => unknown,
+): () => void {
+  try {
+    if (!(name in source)) {
+      return () => {
+        //
+      };
+    }
+
+    const original = source[name] as () => unknown;
+    const wrapped = replacement(original);
+
+    // Make sure it's a function first, as we need to attach an empty prototype for `defineProperties` to work
+    // otherwise it'll throw "TypeError: Object.defineProperties called on non-object"
+    if (typeof wrapped === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      wrapped.prototype = wrapped.prototype || {};
+      Object.defineProperties(wrapped, {
+        __rrweb_original__: {
+          enumerable: false,
+          value: original,
+        },
+      });
+    }
+
+    source[name] = wrapped;
+
+    return () => {
+      source[name] = original;
+    };
+  } catch {
+    return () => {
+      //
+    };
+    // This can throw if multiple fill happens on a global object like XMLHttpRequest
+    // Fixes https://github.com/getsentry/sentry-javascript/issues/2043
+  }
 }
 
 export default {
+  ownerDocument,
   childNodes,
   parentNode,
   parentElement,
   textContent,
+  firstChild,
+  lastChild,
+  nextSibling,
+  previousSibling,
   contains,
   getRootNode,
   host,
@@ -251,5 +376,8 @@ export default {
   shadowRoot,
   querySelector,
   querySelectorAll,
-  mutationObserver: mutationObserverCtor,
+  nowTimestamp,
+  mutationObserver,
+  mutationObserverCtor,
+  patch,
 };
