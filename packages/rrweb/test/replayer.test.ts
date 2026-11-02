@@ -1,4 +1,8 @@
-import { ReplayerEvents } from '@amplitude/rrweb-types';
+import {
+  EventType,
+  IncrementalSource,
+  ReplayerEvents,
+} from '@amplitude/rrweb-types';
 import 'construct-style-sheets-polyfill';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1463,7 +1467,7 @@ describe('replayer', function () {
     expect(changedColors).toEqual([newColor, newColor]);
   });
 
-  it('stops resolving queued adds as soon as they stop making progress', async () => {
+  it('inserts adds whose nextId is never recorded along with the nodes depending on them', async () => {
     await page.evaluate(
       `events = ${JSON.stringify(unresolvableMutationEvents)}`,
     );
@@ -1473,21 +1477,66 @@ describe('replayer', function () {
       const replayer = new Replayer(events, { showWarning: false });
       const start = performance.now();
       replayer.pause(200);
+      const doc = replayer.iframe.contentDocument;
       ({
         duration: performance.now() - start,
-        resolvable: Boolean(
-          replayer.iframe.contentDocument.querySelector('#resolvable'),
-        ),
-        unresolvable: replayer.iframe.contentDocument.querySelectorAll(
-          '[id^="unresolvable-"]',
-        ).length,
+        resolvable: Boolean(doc.querySelector('#resolvable')),
+        unresolvable: doc.querySelectorAll('[id^="unresolvable-"]').length,
+        child: Boolean(doc.querySelector('#unresolvable-201 > #child-of-unresolvable')),
+        waiterBeforeTarget:
+          doc.querySelector('#waits-on-unresolvable')?.nextElementSibling?.id,
+        missingParent: Boolean(doc.querySelector('#missing-parent')),
       });
     `);
 
     // the resolve loop used to spin until its 500ms timeout instead of
     // bailing out once the queue stopped shrinking
     expect((result as { duration: number }).duration).toBeLessThan(300);
-    expect(result).toMatchObject({ resolvable: true, unresolvable: 0 });
+    expect(result).toMatchObject({
+      resolvable: true,
+      unresolvable: 5,
+      child: true,
+      waiterBeforeTarget: 'unresolvable-201',
+      missingParent: false,
+    });
+  });
+
+  it('does not insert a second copy when a stuck add for a present node arrives again', async () => {
+    const mutation = unresolvableMutationEvents.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        e.data.source === IncrementalSource.Mutation &&
+        e.data.adds.some((a) => a.nextId === 9999),
+    )!;
+    // a node whose serialized form differs from the one in the mirror is
+    // rebuilt rather than reused, so inserting it would leave two copies
+    const again = {
+      ...mutation,
+      timestamp: mutation.timestamp + 50,
+      data: {
+        ...mutation.data,
+        adds: mutation.data.adds.map((a) => ({
+          ...a,
+          node: {
+            ...a.node,
+            attributes: { ...a.node.attributes, 'data-again': '' },
+          },
+        })),
+      },
+    };
+    await page.evaluate(
+      `events = ${JSON.stringify([...unresolvableMutationEvents, again])}`,
+    );
+
+    const result = await page.evaluate(`
+      const { Replayer } = rrweb;
+      // the virtual dom diff would collapse nodes sharing an id, hiding the copy
+      const replayer = new Replayer(events, { showWarning: false, useVirtualDom: false });
+      replayer.pause(250);
+      replayer.iframe.contentDocument.querySelectorAll('[id^="unresolvable-"]').length;
+    `);
+
+    expect(result).toBe(5);
   });
 
   it('applies a long run of mixed resolvable and stuck mutation events without the 500ms resolve timeout', async () => {
