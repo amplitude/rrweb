@@ -1087,8 +1087,13 @@ export function serializeNodeWithId(
     onSerialize(n);
   }
   let recordChild = !skipChild;
+  // `needBlock` is deleted below, but the iframe load hook still needs it.
+  // A blocked iframe is a placeholder: serializing its document attaches an
+  // observer that retains the iframe window until recording stops.
+  let isBlockedElement = false;
   if (serializedNode.type === NodeType.Element) {
-    recordChild = recordChild && !serializedNode.needBlock;
+    isBlockedElement = Boolean(serializedNode.needBlock);
+    recordChild = recordChild && !isBlockedElement;
     // this property was not needed in replay side
     delete serializedNode.needBlock;
     const shadowRootEl = dom.shadowRoot(n);
@@ -1200,7 +1205,8 @@ export function serializeNodeWithId(
 
   if (
     serializedNode.type === NodeType.Element &&
-    serializedNode.tagName === 'iframe'
+    serializedNode.tagName === 'iframe' &&
+    !isBlockedElement
   ) {
     onceIframeLoaded(
       n as HTMLIFrameElement,
