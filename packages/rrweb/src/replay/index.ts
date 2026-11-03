@@ -2078,6 +2078,44 @@ export class Replayer {
        * inserted) and the loop continues.
        */
       if (queue.length === pendingCount) {
+        /**
+         * An add can name a `nextId` that never reaches the replayer, e.g. a
+         * sibling elided when mutation events were merged before upload.
+         * Waiting for it is pointless, and dropping the add also drops every
+         * descendant queued behind it (a whole page section in production).
+         * Insert those adds without the sibling hint instead; the adds that
+         * were waiting on them resolve in the next pass.
+         *
+         * An add whose own node is already in the mirror is a mutation being
+         * applied a second time (e.g. a duplicated event). Inserting it would
+         * move the existing node to the end of its parent, or leave a second
+         * copy when the serialized node differs, so it is still dropped.
+         */
+        const queuedIds = new Set(queue.map((m) => m.node.id));
+        let salvaged = 0;
+        for (let i = 0; i < queue.length; i++) {
+          const m = queue[i];
+          if (
+            !mirror.getNode(m.node.id) &&
+            mirror.getNode(m.parentId) &&
+            m.nextId !== null &&
+            m.nextId !== undefined &&
+            m.nextId !== -1 &&
+            !mirror.getNode(m.nextId) &&
+            !queuedIds.has(m.nextId)
+          ) {
+            // copy so seeking back re-applies the original event untouched
+            queue[i] = { ...m, nextId: null };
+            salvaged++;
+          }
+        }
+        if (salvaged) {
+          this.warn(
+            'Inserting nodes without their next sibling since it was never recorded',
+            salvaged,
+          );
+          continue;
+        }
         this.warn(
           'Dropping the resolve queue since none of the remaining nodes can be resolved',
           resolveTrees.map((tree) => ({
