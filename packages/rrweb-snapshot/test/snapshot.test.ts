@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { JSDOM } from 'jsdom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import snapshot, {
   _isBlockedElement,
@@ -367,6 +367,98 @@ describe('maskAttributeFn', () => {
     });
     expect(elements.length).toBeGreaterThan(0);
     expect(elements[0].id).toEqual('myel');
+  });
+});
+
+describe('blocked iframes', () => {
+  const serializeIframe = (
+    iframe: HTMLIFrameElement,
+    options: {
+      blockClass?: string;
+      blockSelector?: string | null;
+    } = {},
+  ) => {
+    const onIframeLoad = vi.fn();
+    const serialized = serializeNodeWithId(iframe, {
+      doc: document,
+      mirror: new Mirror(),
+      blockClass: options.blockClass ?? 'blockblock',
+      blockSelector: options.blockSelector ?? null,
+      maskTextClass: 'maskmask',
+      maskTextSelector: null,
+      skipChild: false,
+      inlineStylesheet: true,
+      maskTextFn: undefined,
+      maskInputFn: undefined,
+      slimDOMOptions: {},
+      onIframeLoad,
+    });
+    return { serialized, onIframeLoad };
+  };
+
+  const appendIframe = (attributes: {
+    className?: string;
+    srcdoc?: string;
+  }): HTMLIFrameElement => {
+    const iframe = document.createElement('iframe');
+    if (attributes.className) iframe.className = attributes.className;
+    if (attributes.srcdoc !== undefined) iframe.srcdoc = attributes.srcdoc;
+    document.body.appendChild(iframe);
+    if (iframe.contentDocument?.body) {
+      iframe.contentDocument.body.innerHTML = '<p>Email body</p>';
+    }
+    return iframe;
+  };
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('does not load the document of an iframe blocked by class', async () => {
+    const iframe = appendIframe({ className: 'blockblock' });
+    const { serialized, onIframeLoad } = serializeIframe(iframe);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onIframeLoad).not.toHaveBeenCalled();
+    expect(serialized).toMatchObject({
+      type: 2,
+      tagName: 'iframe',
+      childNodes: [],
+      attributes: {
+        class: 'blockblock',
+        rr_width: '0px',
+        rr_height: '0px',
+      },
+    });
+    expect(JSON.stringify(serialized)).not.toContain('Email body');
+  });
+
+  it('does not load the document of an iframe blocked by selector', async () => {
+    const iframe = appendIframe({ srcdoc: '<p>Email body</p>' });
+    const { serialized, onIframeLoad } = serializeIframe(iframe, {
+      blockSelector: 'iframe[srcdoc]',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onIframeLoad).not.toHaveBeenCalled();
+    expect((serialized as elementNode).childNodes).toEqual([]);
+    expect(JSON.stringify(serialized)).not.toContain('Email body');
+    expect((serialized as elementNode).attributes).not.toHaveProperty('srcdoc');
+  });
+
+  it('still loads the document of an unblocked iframe', async () => {
+    const iframe = appendIframe({});
+    expect(iframe.contentDocument).toBeTruthy();
+
+    const { onIframeLoad } = serializeIframe(iframe);
+
+    await vi.waitFor(() => {
+      expect(onIframeLoad).toHaveBeenCalledTimes(1);
+    });
+    const serializedDocument = onIframeLoad.mock.calls[0][1];
+    expect(JSON.stringify(serializedDocument)).toContain('Email body');
   });
 });
 

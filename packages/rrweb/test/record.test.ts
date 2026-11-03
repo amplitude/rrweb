@@ -1326,4 +1326,97 @@ describe('record iframes', function (this: ISuite) {
     expect(removeRuleCount).toEqual(2);
     await assertSnapshot(ctx.events);
   });
+
+  it('does not serialize or observe an iframe blocked by class', async () => {
+    const events = await ctx.page.evaluate(async () => {
+      const recorded: eventWithTime[] = [];
+      const { record } = (window as unknown as IWindow).rrweb;
+      record({
+        emit: (event) => {
+          recorded.push(event);
+        },
+      });
+
+      const blocked = document.createElement('iframe');
+      blocked.className = 'rr-block';
+      blocked.setAttribute('sandbox', 'allow-same-origin');
+      const loaded = new Promise<void>((resolve) => {
+        blocked.addEventListener('load', () => resolve());
+      });
+      blocked.srcdoc = '<p>Email body</p>';
+      document.body.append(blocked);
+      await loaded;
+
+      const doc = blocked.contentDocument!;
+      const leaked = doc.createElement('p');
+      leaked.textContent = 'late mutation';
+      doc.body.append(leaked);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      return recorded;
+    });
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).toContain('Mysterious Button');
+    expect(serialized).not.toContain('Email body');
+    expect(serialized).not.toContain('late mutation');
+    expect(
+      events.filter(
+        (event) =>
+          event.type === EventType.IncrementalSnapshot &&
+          event.data.source === IncrementalSource.Mutation &&
+          'isAttachIframe' in event.data &&
+          event.data.isAttachIframe === true,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not serialize or observe iframes blocked by selector', async () => {
+    const events = await ctx.page.evaluate(async () => {
+      const recorded: eventWithTime[] = [];
+      const { record } = (window as unknown as IWindow).rrweb;
+      record({
+        emit: (event) => {
+          recorded.push(event);
+        },
+        blockSelector: 'iframe[srcdoc]',
+      });
+
+      const blocked = document.createElement('iframe');
+      blocked.setAttribute('sandbox', 'allow-same-origin');
+      const loaded = new Promise<void>((resolve) => {
+        blocked.addEventListener('load', () => resolve());
+      });
+      blocked.srcdoc = '<p>Email body</p>';
+      document.body.append(blocked);
+      await loaded;
+
+      document.querySelectorAll('iframe').forEach((node) => {
+        const doc = (node as HTMLIFrameElement).contentDocument;
+        if (!doc?.body) return;
+        const leaked = doc.createElement('p');
+        leaked.textContent = 'late mutation';
+        doc.body.append(leaked);
+      });
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      return recorded;
+    });
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain('Mysterious Button');
+    expect(serialized).not.toContain('Email body');
+    expect(serialized).not.toContain('late mutation');
+    expect(
+      events.filter(
+        (event) =>
+          event.type === EventType.IncrementalSnapshot &&
+          event.data.source === IncrementalSource.Mutation &&
+          'isAttachIframe' in event.data &&
+          event.data.isAttachIframe === true,
+      ),
+    ).toHaveLength(0);
+  });
 });
