@@ -118,9 +118,10 @@ export function stringifyStylesheet(s: CSSStyleSheet): string | null {
       return null;
     }
     let sheetHref = s.href;
-    if (!sheetHref && s.ownerNode && s.ownerNode.ownerDocument) {
-      // an inline <style> element
-      sheetHref = s.ownerNode.ownerDocument.location.href;
+    if (!sheetHref && s.ownerNode) {
+      // an inline <style> element. baseURI follows <base href>, which
+      // ownerDocument.location does not. #1705
+      sheetHref = s.ownerNode.baseURI;
     }
     const stringifiedRules = Array.from(rules, (rule: CSSRule) =>
       stringifyRule(rule, sheetHref),
@@ -429,8 +430,10 @@ export function absolutifyURLs(cssText: string | null, href: string): string {
           extractOrigin(href) + filePath
         }${maybeQuote})`;
       }
-      const stack = href.split('/');
-      const parts = filePath.split('/');
+      const filePathNoHash = filePath.split('#')[0];
+      const maybeHash = filePath.substring(filePathNoHash.length);
+      const stack = href.split('#')[0].split('/');
+      const parts = filePathNoHash.split('/');
       stack.pop();
       for (const part of parts) {
         if (part === '.') {
@@ -441,10 +444,17 @@ export function absolutifyURLs(cssText: string | null, href: string): string {
           stack.push(part);
         }
       }
-      return `url(${maybeQuote}${stack.join('/')}${maybeQuote})`;
+      return `url(${maybeQuote}${stack.join('/')}${maybeHash}${maybeQuote})`;
     },
   );
 }
+
+// `\b(0)px?` also matches a trailing `0p` (the `x` of `0px` not yet consumed).
+// Replacing only `0px` makes `.ab{margin:0p` and `.ab{margin:0}` the same
+// normalized length, so splitCssText can cut a rule in the middle. #1920 / #1948.
+const cssNormalizeBase = '(?:/\\*[^*]*\\*/)|[\\s;]'; // whitespace
+const cssNormalizeRe = new RegExp(`${cssNormalizeBase}|\\b(0)px?`, 'g');
+const cssNormalizeReNoPx = new RegExp(cssNormalizeBase, 'g');
 
 /**
  * Intention is to normalize by remove spaces, semicolons and CSS comments
@@ -458,11 +468,9 @@ export function normalizeCssString(
    */
   _testNoPxNorm = false,
 ): string {
-  if (_testNoPxNorm) {
-    return cssText.replace(/(\/\*[^*]*\*\/)|[\s;]/g, '');
-  } else {
-    return cssText.replace(/(\/\*[^*]*\*\/)|[\s;]/g, '').replace(/0px/g, '0');
-  }
+  return _testNoPxNorm
+    ? cssText.replace(cssNormalizeReNoPx, '')
+    : cssText.replace(cssNormalizeRe, '$1');
 }
 
 /**
