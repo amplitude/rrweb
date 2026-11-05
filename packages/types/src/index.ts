@@ -645,7 +645,7 @@ export type playerMetaData = {
 };
 
 export type actionWithDelay = {
-  doAction: () => void;
+  doAction: () => void | Promise<void>;
   delay: number;
 };
 
