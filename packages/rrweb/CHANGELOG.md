@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.6 (2026-11-05)</small>
+
+- fix(replay): insert adds whose nextId never arrives instead of dropping them ([69f90ca](https://github.com/amplitude/rrweb/commit/69f90ca))
+- fix(snapshot): do not observe blocked iframe documents (#144) ([56da042](https://github.com/amplitude/rrweb/commit/56da042)), closes [#144](https://github.com/amplitude/rrweb/issues/144)
+
 ## <small>2.1.5 (2026-10-22)</small>
 
 - feat(record): expose native interactions to recorder hooks (#142) ([170c07a](https://github.com/amplitude/rrweb/commit/170c07a)), closes [#142](https://github.com/amplitude/rrweb/issues/142)

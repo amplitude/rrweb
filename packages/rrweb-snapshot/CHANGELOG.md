@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.6 (2026-11-05)</small>
+
+- fix(snapshot): do not observe blocked iframe documents (#144) ([56da042](https://github.com/amplitude/rrweb/commit/56da042)), closes [#144](https://github.com/amplitude/rrweb/issues/144)
+
 ## <small>2.1.5 (2026-10-22)</small>
 
 - fix(snapshot): forward inlined styleId dedupe set into iframe snapshots ([443c90f](https://github.com/amplitude/rrweb/commit/443c90f))
