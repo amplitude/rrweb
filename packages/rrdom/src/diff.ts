@@ -411,7 +411,13 @@ function diffChildren(
       nodeMatching(oldStartNode, newEndNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        insertPreservingCSSOM(oldTree, oldStartNode, oldEndNode.nextSibling);
+        insertPreservingCSSOM(
+          oldTree,
+          oldStartNode,
+          oldEndNode.nextSibling,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -422,7 +428,13 @@ function diffChildren(
       nodeMatching(oldEndNode, newStartNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        insertPreservingCSSOM(oldTree, oldEndNode, oldStartNode);
+        insertPreservingCSSOM(
+          oldTree,
+          oldEndNode,
+          oldStartNode,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -447,7 +459,13 @@ function diffChildren(
         nodeMatching(nodeToMove, newStartNode, replayer.mirror, rrnodeMirror)
       ) {
         try {
-          insertPreservingCSSOM(oldTree, nodeToMove, oldStartNode);
+          insertPreservingCSSOM(
+            oldTree,
+            nodeToMove,
+            oldStartNode,
+            replayer.mirror,
+            rrnodeMirror,
+          );
         } catch (e) {
           console.warn(e);
         }
@@ -481,7 +499,13 @@ function diffChildren(
         }
 
         try {
-          insertPreservingCSSOM(oldTree, newNode, oldStartNode || null);
+          insertPreservingCSSOM(
+            oldTree,
+            newNode,
+            oldStartNode || null,
+            replayer.mirror,
+            rrnodeMirror,
+          );
         } catch (e) {
           console.warn(e);
         }
@@ -503,7 +527,13 @@ function diffChildren(
         rrnodeMirror,
       );
       try {
-        insertPreservingCSSOM(oldTree, newNode, referenceNode);
+        insertPreservingCSSOM(
+          oldTree,
+          newNode,
+          referenceNode,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -532,6 +562,12 @@ function diffChildren(
 }
 
 /**
+ * Virtual nodes that buildFromDom created from a node already in the real document. A virtual
+ * node that is not in here was added by a replayed mutation.
+ */
+export const nodesBuiltFromDom = new WeakSet<IRRNode>();
+
+/**
  * Inserts or moves `node` under `parent`, keeping the CSSOM of any <style> elements it carries.
  *
  * Detaching a <style> element from the document discards its CSSStyleSheet, and re-attaching it
@@ -539,13 +575,24 @@ function diffChildren(
  * (insertRule/deleteRule, as CSS-in-JS libraries like JSS do) only exist in the old sheet, so a
  * move made by the diff would silently drop them, even though the recorded page never moved the
  * element. Record the rules before the move and restore them afterwards.
+ *
+ * Only do this for a <style> whose virtual node is still the one built from the real document.
+ * If the recorded page itself removed and re-added the element, the replayed mutation created a
+ * new virtual node, and the browser re-parsing the sheet is what happened on the recorded page.
  */
 function insertPreservingCSSOM(
   parent: Node,
   node: Node,
   referenceNode: Node | null,
+  domMirror: NodeMirror,
+  rrnodeMirror: Mirror,
 ) {
-  const saved = node.isConnected ? collectStyleRules(node) : [];
+  const saved = node.isConnected
+    ? collectStyleRules(node).filter(([styleElement]) => {
+        const rrNode = rrnodeMirror.getNode(domMirror.getId(styleElement));
+        return rrNode !== null && nodesBuiltFromDom.has(rrNode);
+      })
+    : [];
   parent.insertBefore(node, referenceNode);
   for (const [styleElement, rules] of saved)
     restoreStyleRules(styleElement, rules);

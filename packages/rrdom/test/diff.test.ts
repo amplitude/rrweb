@@ -1205,6 +1205,45 @@ describe('diff algorithm for rrdom', () => {
       expect([styleA, styleB, styleC].map(rules)).toEqual(expected);
     });
 
+    it('lets the browser re-parse a style element the recorded page re-inserted', () => {
+      document.write(
+        '<!DOCTYPE html><html><head>' +
+          '<style>button { color: black; }</style>' +
+          '<meta name="example" content="demo">' +
+          '</head><body></body></html>',
+      );
+      const [style, meta] = Array.from(document.head.children);
+      (style as HTMLStyleElement).sheet!.insertRule(
+        'button { color: blue; }',
+        1,
+      );
+      expect(rules(style)).toHaveLength(2);
+
+      // The recorded page moved <style> after <meta>. The recorder captures
+      // that as a remove and an add of the same id, and replaying the add
+      // creates a new virtual node for it. On the recorded page the browser
+      // re-parsed the sheet from its text, dropping the blue rule.
+      const rrDocument = buildFromDom(document, mirror);
+      const rrHead = rrDocument.mirror.getNode(mirror.getId(document.head))!;
+      const [rrStyle] = Array.from(rrHead.childNodes);
+      const [rrText] = Array.from(rrStyle.childNodes);
+      const styleMeta = rrDocument.mirror.getMeta(rrStyle)!;
+      const textMeta = rrDocument.mirror.getMeta(rrText)!;
+      rrHead.removeChild(rrStyle);
+      rrDocument.mirror.removeNodeFromMap(rrStyle);
+      const reAdded = rrDocument.createElement('style');
+      const reAddedText = rrDocument.createTextNode('button { color: black; }');
+      reAdded.appendChild(reAddedText);
+      rrDocument.mirror.add(reAdded, styleMeta);
+      rrDocument.mirror.add(reAddedText, textMeta);
+      rrHead.appendChild(reAdded);
+
+      diff(document, rrDocument, replayer, rrDocument.mirror);
+
+      expect(Array.from(document.head.children)).toEqual([meta, style]);
+      expect(rules(style)).toEqual(['button {color: black;}']);
+    });
+
     /**
      * Builds `<body>` from `bodyHtml`, lets `setup` add a CSSOM-only rule to a
      * <style> inside #moved, then diffs <body> into the order other, moved.
