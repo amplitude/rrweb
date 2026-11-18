@@ -411,7 +411,13 @@ function diffChildren(
       nodeMatching(oldStartNode, newEndNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        oldTree.insertBefore(oldStartNode, oldEndNode.nextSibling);
+        insertPreservingCSSOM(
+          oldTree,
+          oldStartNode,
+          oldEndNode.nextSibling,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -422,7 +428,13 @@ function diffChildren(
       nodeMatching(oldEndNode, newStartNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        oldTree.insertBefore(oldEndNode, oldStartNode);
+        insertPreservingCSSOM(
+          oldTree,
+          oldEndNode,
+          oldStartNode,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -447,7 +459,13 @@ function diffChildren(
         nodeMatching(nodeToMove, newStartNode, replayer.mirror, rrnodeMirror)
       ) {
         try {
-          oldTree.insertBefore(nodeToMove, oldStartNode);
+          insertPreservingCSSOM(
+            oldTree,
+            nodeToMove,
+            oldStartNode,
+            replayer.mirror,
+            rrnodeMirror,
+          );
         } catch (e) {
           console.warn(e);
         }
@@ -481,7 +499,13 @@ function diffChildren(
         }
 
         try {
-          oldTree.insertBefore(newNode, oldStartNode || null);
+          insertPreservingCSSOM(
+            oldTree,
+            newNode,
+            oldStartNode || null,
+            replayer.mirror,
+            rrnodeMirror,
+          );
         } catch (e) {
           console.warn(e);
         }
@@ -503,7 +527,13 @@ function diffChildren(
         rrnodeMirror,
       );
       try {
-        oldTree.insertBefore(newNode, referenceNode);
+        insertPreservingCSSOM(
+          oldTree,
+          newNode,
+          referenceNode,
+          replayer.mirror,
+          rrnodeMirror,
+        );
       } catch (e) {
         console.warn(e);
       }
@@ -528,6 +558,101 @@ function diffChildren(
     diff(oldChild, newChild, replayer, rrnodeMirror);
     oldChild = oldChild.nextSibling;
     newChild = newChild.nextSibling;
+  }
+}
+
+/**
+ * Virtual nodes that buildFromDom created from a node already in the real document. A virtual
+ * node that is not in here was added by a replayed mutation.
+ */
+export const nodesBuiltFromDom = new WeakSet<IRRNode>();
+
+/**
+ * Inserts or moves `node` under `parent`, keeping the CSSOM of any <style> elements it carries.
+ *
+ * Detaching a <style> element from the document discards its CSSStyleSheet, and re-attaching it
+ * re-parses the sheet from its text content. Rules that were added or removed through the CSSOM
+ * (insertRule/deleteRule, as CSS-in-JS libraries like JSS do) only exist in the old sheet, so a
+ * move made by the diff would silently drop them, even though the recorded page never moved the
+ * element. Record the rules before the move and restore them afterwards.
+ *
+ * Only do this for a <style> whose virtual node is still the one built from the real document.
+ * If the recorded page itself removed and re-added the element, the replayed mutation created a
+ * new virtual node, and the browser re-parsing the sheet is what happened on the recorded page.
+ */
+function insertPreservingCSSOM(
+  parent: Node,
+  node: Node,
+  referenceNode: Node | null,
+  domMirror: NodeMirror,
+  rrnodeMirror: Mirror,
+) {
+  const saved = node.isConnected
+    ? collectStyleRules(node).filter(([styleElement]) => {
+        const rrNode = rrnodeMirror.getNode(domMirror.getId(styleElement));
+        return rrNode !== null && nodesBuiltFromDom.has(rrNode);
+      })
+    : [];
+  parent.insertBefore(node, referenceNode);
+  for (const [styleElement, rules] of saved)
+    restoreStyleRules(styleElement, rules);
+}
+
+// <style> in HTML and in SVG both expose their CSSOM through `sheet`.
+type StyleElement = HTMLStyleElement | SVGStyleElement;
+
+function collectStyleRules(node: Node): [StyleElement, string[]][] {
+  if (node.nodeType !== node.ELEMENT_NODE) return [];
+  const styleElements: StyleElement[] = [];
+  // Shadow trees are detached together with their host, so walk into them too.
+  const collect = (element: Element) => {
+    // localName rather than nodeName: SVG <style> in an HTML document reports
+    // a lowercase nodeName.
+    if (element.localName === 'style')
+      styleElements.push(element as StyleElement);
+    if (element.shadowRoot)
+      for (const child of Array.from(element.shadowRoot.children))
+        collect(child);
+    for (const child of Array.from(element.children)) collect(child);
+  };
+  collect(node as Element);
+  const saved: [StyleElement, string[]][] = [];
+  for (const styleElement of styleElements) {
+    try {
+      const sheet = styleElement.sheet;
+      if (sheet)
+        saved.push([
+          styleElement,
+          Array.from(sheet.cssRules, (rule) => rule.cssText),
+        ]);
+    } catch (e) {
+      // cssRules can throw for inaccessible sheets; leave those to the browser.
+    }
+  }
+  return saved;
+}
+
+function restoreStyleRules(styleElement: StyleElement, rules: string[]) {
+  try {
+    const sheet = styleElement.sheet;
+    if (!sheet) return;
+    const current = sheet.cssRules;
+    if (
+      current.length === rules.length &&
+      rules.every((rule, i) => current[i].cssText === rule)
+    )
+      return;
+    while (sheet.cssRules.length > 0)
+      sheet.deleteRule(sheet.cssRules.length - 1);
+    for (const rule of rules) {
+      try {
+        sheet.insertRule(rule, sheet.cssRules.length);
+      } catch (e) {
+        // A rule the browser serialized but cannot parse back; skip it.
+      }
+    }
+  } catch (e) {
+    // Just for safety concern.
   }
 }
 

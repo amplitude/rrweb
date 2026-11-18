@@ -7,6 +7,7 @@ import {
   inDom,
   shadowHostInDom,
   getShadowHost,
+  getNestedRule,
 } from '../src/utils';
 
 describe('Utilities for other modules', () => {
@@ -79,6 +80,33 @@ describe('Utilities for other modules', () => {
       for (let s of styleList) expect(mirror.has(s)).toBeFalsy();
       for (let i = 0; i < 10; i++) expect(mirror.getStyle(i + 1)).toBeNull();
       expect(mirror.add(new CSSStyleSheet())).toBe(1);
+    });
+  });
+
+  describe('getNestedRule()', () => {
+    function sheetWith(css: string) {
+      const style = document.createElement('style');
+      style.textContent = css;
+      document.head.appendChild(style);
+      return style.sheet!;
+    }
+
+    it('resolves top-level and nested rule paths', () => {
+      const sheet = sheetWith(
+        '.a { color: red; } .b { color: blue; } @media (min-width: 1px) { .c { color: green; } .d { color: black; } }',
+      );
+      const select = (path: number[]) =>
+        (getNestedRule(sheet.cssRules, path) as unknown as CSSStyleRule)
+          .selectorText;
+      expect(select([1])).toBe('.b');
+      expect(select([2, 0])).toBe('.c');
+      expect(select([2, 1])).toBe('.d');
+    });
+
+    it('returns undefined for a path that does not exist', () => {
+      const sheet = sheetWith('.a { color: red; }');
+      expect(getNestedRule(sheet.cssRules, [5])).toBeUndefined();
+      expect(getNestedRule(sheet.cssRules, [0, 1])).toBeUndefined();
     });
   });
 

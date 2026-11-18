@@ -467,19 +467,22 @@ export function hasShadowRoot<T extends Node | RRNode>(
   return Boolean(dom.shadowRoot(n as unknown as Element));
 }
 
+/**
+ * Resolves a rule from its path of indices, e.g. [4, 1] is the second rule
+ * inside the fifth rule of the stylesheet. Returns undefined if the path does
+ * not exist in `rules`.
+ */
 export function getNestedRule(
   rules: CSSRuleList,
   position: number[],
 ): CSSGroupingRule {
-  const rule = rules[position[0]] as CSSGroupingRule;
-  if (position.length === 1) {
-    return rule;
-  } else {
-    return getNestedRule(
-      (rule.cssRules[position[1]] as CSSGroupingRule).cssRules,
-      position.slice(2),
-    );
+  let rule = rules[position[0]] as CSSGroupingRule | undefined;
+  for (let i = 1; i < position.length && rule; i++) {
+    rule = (rule.cssRules as CSSRuleList | undefined)?.[position[i]] as
+      | CSSGroupingRule
+      | undefined;
   }
+  return rule as CSSGroupingRule;
 }
 
 export function getPositionsAndIndex(nestedIndex: number[]) {

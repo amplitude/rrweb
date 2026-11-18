@@ -1,8 +1,10 @@
 import {
   EventType,
   IncrementalSource,
+  NodeType,
   ReplayerEvents,
 } from '@amplitude/rrweb-types';
+import type { eventWithTime } from '@amplitude/rrweb-types';
 import 'construct-style-sheets-polyfill';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -190,6 +192,157 @@ describe('replayer', function () {
 
     await assertDomSnapshot(page);
   });
+
+  // The replayer only switches to the virtual DOM at the first mutation of a
+  // fast forward, so style events before it go to the real DOM and style
+  // events after it go through the virtual DOM and the diff. Cover both.
+  it.each([
+    ['the real DOM', 200],
+    ['the virtual DOM', 50],
+  ])(
+    'keeps fast forwarding past style events that do not resolve, through %s',
+    async (_, mutationAt) => {
+      const t0 = Date.now();
+      const styleEvents = [
+        {
+          type: EventType.Meta,
+          data: { href: 'http://localhost', width: 1000, height: 800 },
+          timestamp: t0,
+        },
+        {
+          type: EventType.FullSnapshot,
+          data: {
+            node: {
+              type: NodeType.Document,
+              id: 1,
+              childNodes: [
+                {
+                  type: NodeType.Element,
+                  tagName: 'html',
+                  id: 2,
+                  attributes: {},
+                  childNodes: [
+                    {
+                      type: NodeType.Element,
+                      tagName: 'head',
+                      id: 3,
+                      attributes: {},
+                      childNodes: [
+                        {
+                          type: NodeType.Element,
+                          tagName: 'style',
+                          id: 4,
+                          attributes: {
+                            id: 'target',
+                            _cssText:
+                              '.a { color: red; }@media (min-width: 1px) { .b { color: blue; } }',
+                          },
+                          childNodes: [],
+                        },
+                      ],
+                    },
+                    {
+                      type: NodeType.Element,
+                      tagName: 'body',
+                      id: 5,
+                      attributes: {},
+                      childNodes: [
+                        {
+                          type: NodeType.Element,
+                          tagName: 'div',
+                          id: 6,
+                          attributes: { class: 'b' },
+                          childNodes: [
+                            { type: NodeType.Text, id: 7, textContent: 'b' },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            initialOffset: { top: 0, left: 0 },
+          },
+          timestamp: t0 + 10,
+        },
+        // Older recorders dropped the position of the @media block, so this
+        // declaration points at the @media rule itself, which has no style.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleDeclaration,
+            id: 4,
+            index: [1],
+            set: { property: 'color', value: 'green', priority: '' },
+          },
+          timestamp: t0 + 100,
+        },
+        // A rule event whose id is not a <style>, e.g. from another tab of the
+        // same session.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleSheetRule,
+            id: 7,
+            adds: [{ rule: '.x { color: red; }', index: 0 }],
+          },
+          timestamp: t0 + 150,
+        },
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.Mutation,
+            texts: [],
+            attributes: [],
+            removes: [],
+            adds: [
+              {
+                parentId: 5,
+                nextId: null,
+                node: {
+                  type: NodeType.Element,
+                  tagName: 'div',
+                  id: 8,
+                  attributes: { id: 'after' },
+                  childNodes: [],
+                },
+              },
+            ],
+          },
+          timestamp: t0 + mutationAt,
+        },
+        // The full path of `.b` inside the @media block.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleDeclaration,
+            id: 4,
+            index: [1, 0],
+            set: { property: 'color', value: 'rgb(128, 0, 128)', priority: '' },
+          },
+          timestamp: t0 + 300,
+        },
+      ].sort((a, b) => a.timestamp - b.timestamp) as eventWithTime[];
+      await page.evaluate(`events = ${JSON.stringify(styleEvents)}`);
+      const result = await page.evaluate(`
+      const { Replayer } = rrweb;
+      const replayer = new Replayer(events, { showWarning: false });
+      replayer.pause(400);
+      const doc = replayer.iframe.contentDocument;
+      ({
+        added: !!doc.getElementById('after'),
+        rules: [...doc.getElementById('target').sheet.cssRules].map((r) => r.cssText),
+      });
+    `);
+
+      expect(result.added).toBe(true);
+      expect(result.rules).toEqual([
+        '.a { color: red; }',
+        '@media (min-width: 1px) {\n  .b { color: rgb(128, 0, 128); }\n}',
+      ]);
+    },
+  );
 
   it('should apply fast forwarded StyleSheetRules that where added', async () => {
     await page.evaluate(`events = ${JSON.stringify(styleSheetRuleEvents)}`);
