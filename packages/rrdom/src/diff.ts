@@ -551,20 +551,25 @@ function insertPreservingCSSOM(
     restoreStyleRules(styleElement, rules);
 }
 
-function collectStyleRules(node: Node): [HTMLStyleElement, string[]][] {
+// <style> in HTML and in SVG both expose their CSSOM through `sheet`.
+type StyleElement = HTMLStyleElement | SVGStyleElement;
+
+function collectStyleRules(node: Node): [StyleElement, string[]][] {
   if (node.nodeType !== node.ELEMENT_NODE) return [];
-  const styleElements: HTMLStyleElement[] = [];
+  const styleElements: StyleElement[] = [];
   // Shadow trees are detached together with their host, so walk into them too.
   const collect = (element: Element) => {
-    if (element.nodeName === 'STYLE')
-      styleElements.push(element as HTMLStyleElement);
+    // localName rather than nodeName: SVG <style> in an HTML document reports
+    // a lowercase nodeName.
+    if (element.localName === 'style')
+      styleElements.push(element as StyleElement);
     if (element.shadowRoot)
       for (const child of Array.from(element.shadowRoot.children))
         collect(child);
     for (const child of Array.from(element.children)) collect(child);
   };
   collect(node as Element);
-  const saved: [HTMLStyleElement, string[]][] = [];
+  const saved: [StyleElement, string[]][] = [];
   for (const styleElement of styleElements) {
     try {
       const sheet = styleElement.sheet;
@@ -580,7 +585,7 @@ function collectStyleRules(node: Node): [HTMLStyleElement, string[]][] {
   return saved;
 }
 
-function restoreStyleRules(styleElement: HTMLStyleElement, rules: string[]) {
+function restoreStyleRules(styleElement: StyleElement, rules: string[]) {
   try {
     const sheet = styleElement.sheet;
     if (!sheet) return;

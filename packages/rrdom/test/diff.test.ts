@@ -1205,9 +1205,13 @@ describe('diff algorithm for rrdom', () => {
       expect([styleA, styleB, styleC].map(rules)).toEqual(expected);
     });
 
-    it('keeps CSSOM-only rules inside the shadow tree of a moved host', async () => {
-      // JSDOM does not build stylesheets for <style> in shadow roots, so this
-      // runs in a real browser.
+    /**
+     * Builds `<body>` from `bodyHtml`, lets `setup` add a CSSOM-only rule to a
+     * <style> inside #moved, then diffs <body> into the order other, moved.
+     * Runs in a real browser: JSDOM does not build sheets for <style> in shadow
+     * roots or SVG.
+     */
+    async function moveAndReadRules(bodyHtml: string, setup: string) {
       const browser = await puppeteer.launch({
         headless: 'new',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -1221,30 +1225,25 @@ describe('diff algorithm for rrdom', () => {
             'utf8',
           ),
         );
-        const result = await page.evaluate(`
+        return await page.evaluate(`
           document.write(
             '<!DOCTYPE html><html><head></head><body>' +
-              '<div id="host"></div><div id="other"></div>' +
-              '</body></html>',
+              ${JSON.stringify(bodyHtml)} +
+              '<div id="other"></div></body></html>',
           );
-          const host = document.getElementById('host');
+          const moved = document.getElementById('moved');
           const other = document.getElementById('other');
-          const shadowStyle = document.createElement('style');
-          shadowStyle.textContent = '.a { color: red; }';
-          host.attachShadow({ mode: 'open' }).appendChild(shadowStyle);
-          // Added only through the CSSOM.
-          shadowStyle.sheet.insertRule('.added { color: blue; }', 1);
+          const style = (() => { ${setup} })();
           const rules = () =>
-            Array.from(shadowStyle.sheet.cssRules, (rule) => rule.cssText);
+            Array.from(style.sheet.cssRules, (rule) => rule.cssText);
           const before = rules();
 
-          // Reorder <body> to other, host so the diff moves the shadow host.
           const mirror = rrdom.createMirror();
           const rrDocument = rrdom.buildFromDom(document, mirror);
           const rrBody = rrDocument.mirror.getNode(mirror.getId(document.body));
-          const [rrHost, rrOther] = Array.from(rrBody.childNodes);
+          const [rrMoved, rrOther] = Array.from(rrBody.childNodes);
           rrBody.removeChild(rrOther);
-          rrBody.insertBefore(rrOther, rrHost);
+          rrBody.insertBefore(rrOther, rrMoved);
           rrdom.diff(
             document,
             rrDocument,
@@ -1264,13 +1263,40 @@ describe('diff algorithm for rrdom', () => {
             after: rules(),
           });
         `);
-        expect(result.order).toEqual(['other', 'host']);
-        expect(result.before).toHaveLength(2);
-        expect(result.after).toEqual(result.before);
       } finally {
         await page.close();
         await browser.close();
       }
+    }
+
+    it('keeps CSSOM-only rules inside the shadow tree of a moved host', async () => {
+      const result = await moveAndReadRules(
+        '<div id="moved"></div>',
+        `
+          const style = document.createElement('style');
+          style.textContent = '.a { color: red; }';
+          moved.attachShadow({ mode: 'open' }).appendChild(style);
+          style.sheet.insertRule('.added { color: blue; }', 1);
+          return style;
+        `,
+      );
+      expect(result.order).toEqual(['other', 'moved']);
+      expect(result.before).toHaveLength(2);
+      expect(result.after).toEqual(result.before);
+    });
+
+    it('keeps CSSOM-only rules of SVG style elements the diff moves', async () => {
+      const result = await moveAndReadRules(
+        '<svg id="moved"><style>.a { fill: red; }</style></svg>',
+        `
+          const style = moved.querySelector('style');
+          style.sheet.insertRule('.added { fill: blue; }', 1);
+          return style;
+        `,
+      );
+      expect(result.order).toEqual(['other', 'moved']);
+      expect(result.before).toHaveLength(2);
+      expect(result.after).toEqual(result.before);
     });
   });
 
