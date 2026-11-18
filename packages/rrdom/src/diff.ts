@@ -411,7 +411,7 @@ function diffChildren(
       nodeMatching(oldStartNode, newEndNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        oldTree.insertBefore(oldStartNode, oldEndNode.nextSibling);
+        insertPreservingCSSOM(oldTree, oldStartNode, oldEndNode.nextSibling);
       } catch (e) {
         console.warn(e);
       }
@@ -422,7 +422,7 @@ function diffChildren(
       nodeMatching(oldEndNode, newStartNode, replayer.mirror, rrnodeMirror)
     ) {
       try {
-        oldTree.insertBefore(oldEndNode, oldStartNode);
+        insertPreservingCSSOM(oldTree, oldEndNode, oldStartNode);
       } catch (e) {
         console.warn(e);
       }
@@ -447,7 +447,7 @@ function diffChildren(
         nodeMatching(nodeToMove, newStartNode, replayer.mirror, rrnodeMirror)
       ) {
         try {
-          oldTree.insertBefore(nodeToMove, oldStartNode);
+          insertPreservingCSSOM(oldTree, nodeToMove, oldStartNode);
         } catch (e) {
           console.warn(e);
         }
@@ -481,7 +481,7 @@ function diffChildren(
         }
 
         try {
-          oldTree.insertBefore(newNode, oldStartNode || null);
+          insertPreservingCSSOM(oldTree, newNode, oldStartNode || null);
         } catch (e) {
           console.warn(e);
         }
@@ -503,7 +503,7 @@ function diffChildren(
         rrnodeMirror,
       );
       try {
-        oldTree.insertBefore(newNode, referenceNode);
+        insertPreservingCSSOM(oldTree, newNode, referenceNode);
       } catch (e) {
         console.warn(e);
       }
@@ -528,6 +528,74 @@ function diffChildren(
     diff(oldChild, newChild, replayer, rrnodeMirror);
     oldChild = oldChild.nextSibling;
     newChild = newChild.nextSibling;
+  }
+}
+
+/**
+ * Inserts or moves `node` under `parent`, keeping the CSSOM of any <style> elements it carries.
+ *
+ * Detaching a <style> element from the document discards its CSSStyleSheet, and re-attaching it
+ * re-parses the sheet from its text content. Rules that were added or removed through the CSSOM
+ * (insertRule/deleteRule, as CSS-in-JS libraries like JSS do) only exist in the old sheet, so a
+ * move made by the diff would silently drop them, even though the recorded page never moved the
+ * element. Record the rules before the move and restore them afterwards.
+ */
+function insertPreservingCSSOM(
+  parent: Node,
+  node: Node,
+  referenceNode: Node | null,
+) {
+  const saved = node.isConnected ? collectStyleRules(node) : [];
+  parent.insertBefore(node, referenceNode);
+  for (const [styleElement, rules] of saved)
+    restoreStyleRules(styleElement, rules);
+}
+
+function collectStyleRules(node: Node): [HTMLStyleElement, string[]][] {
+  if (node.nodeType !== node.ELEMENT_NODE) return [];
+  const element = node as Element;
+  const styleElements: HTMLStyleElement[] = [];
+  if (element.nodeName === 'STYLE')
+    styleElements.push(element as HTMLStyleElement);
+  if (element.firstElementChild)
+    styleElements.push(...Array.from(element.getElementsByTagName('style')));
+  const saved: [HTMLStyleElement, string[]][] = [];
+  for (const styleElement of styleElements) {
+    try {
+      const sheet = styleElement.sheet;
+      if (sheet)
+        saved.push([
+          styleElement,
+          Array.from(sheet.cssRules, (rule) => rule.cssText),
+        ]);
+    } catch (e) {
+      // cssRules can throw for inaccessible sheets; leave those to the browser.
+    }
+  }
+  return saved;
+}
+
+function restoreStyleRules(styleElement: HTMLStyleElement, rules: string[]) {
+  try {
+    const sheet = styleElement.sheet;
+    if (!sheet) return;
+    const current = sheet.cssRules;
+    if (
+      current.length === rules.length &&
+      rules.every((rule, i) => current[i].cssText === rule)
+    )
+      return;
+    while (sheet.cssRules.length > 0)
+      sheet.deleteRule(sheet.cssRules.length - 1);
+    for (const rule of rules) {
+      try {
+        sheet.insertRule(rule, sheet.cssRules.length);
+      } catch (e) {
+        // A rule the browser serialized but cannot parse back; skip it.
+      }
+    }
+  } catch (e) {
+    // Just for safety concern.
   }
 }
 

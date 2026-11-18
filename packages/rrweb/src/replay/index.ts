@@ -1627,10 +1627,16 @@ export class Replayer {
       case IncrementalSource.StyleDeclaration: {
         if (this.usingVirtualDom) {
           if (d.styleId) this.constructedStyleMutations.push(d);
-          else if (d.id)
-            (
-              this.virtualDom.mirror.getNode(d.id) as RRStyleElement | null
-            )?.rules.push(d);
+          else if (d.id) {
+            // The id may not belong to a <style> (e.g. events from another tab
+            // of the same session share the id space). The non-virtual path
+            // ignores those because the node has no sheet; do the same here
+            // instead of throwing and aborting the rest of the seek.
+            const target = this.virtualDom.mirror.getNode(
+              d.id,
+            ) as RRStyleElement | null;
+            target?.rules?.push(d);
+          }
         } else this.applyStyleSheetMutation(d);
         break;
       }
@@ -2428,11 +2434,15 @@ export class Replayer {
     data: styleDeclarationData,
     styleSheet: CSSStyleSheet,
   ) {
+    const rule = getNestedRule(styleSheet.cssRules, data.index) as unknown as
+      | CSSStyleRule
+      | undefined;
+    // Recordings from older recorders can carry an index that does not point at
+    // a style rule (e.g. it lands on an @media block). Skip it rather than
+    // throwing, which during a seek aborts the whole virtual DOM flush.
+    if (!rule?.style) return;
+
     if (data.set) {
-      const rule = getNestedRule(
-        styleSheet.rules,
-        data.index,
-      ) as unknown as CSSStyleRule;
       rule.style.setProperty(
         data.set.property,
         data.set.value,
@@ -2441,10 +2451,6 @@ export class Replayer {
     }
 
     if (data.remove) {
-      const rule = getNestedRule(
-        styleSheet.rules,
-        data.index,
-      ) as unknown as CSSStyleRule;
       rule.style.removeProperty(data.remove.property);
     }
   }

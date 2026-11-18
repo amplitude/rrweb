@@ -1158,6 +1158,54 @@ describe('diff algorithm for rrdom', () => {
     });
   });
 
+  describe('moving style elements', () => {
+    function rules(style: Element) {
+      return Array.from(
+        (style as HTMLStyleElement).sheet!.cssRules,
+        (rule) => rule.cssText,
+      );
+    }
+
+    it('keeps CSSOM-only rules of style elements the diff moves', () => {
+      document.write(
+        '<!DOCTYPE html><html><head>' +
+          '<style>.a { color: red; }</style>' +
+          '<style>.b { color: red; }</style>' +
+          '<style>.c { color: red; }</style>' +
+          '</head><body></body></html>',
+      );
+      const [styleA, styleB, styleC] = Array.from(document.head.children);
+      // CSS-in-JS libraries (JSS) change sheets through the CSSOM only, so the
+      // text content of the <style> no longer describes the sheet.
+      (styleA as HTMLStyleElement).sheet!.insertRule(
+        '.added { color: blue; }',
+        1,
+      );
+      (styleC as HTMLStyleElement).sheet!.deleteRule(0);
+      const expected = [styleA, styleB, styleC].map(rules);
+      expect(expected[0]).toHaveLength(2);
+      expect(expected[2]).toHaveLength(0);
+
+      // What a seek does: mirror the live DOM into rrdom, apply mutations there,
+      // then diff back. Here the mutations reorder <head> to C, A, B.
+      const rrDocument = buildFromDom(document, mirror);
+      const rrHead = rrDocument.mirror.getNode(mirror.getId(document.head))!;
+      const [rrA, rrB, rrC] = Array.from(rrHead.childNodes);
+      rrHead.removeChild(rrC);
+      rrHead.insertBefore(rrC, rrA);
+      expect(rrHead.childNodes).toEqual([rrC, rrA, rrB]);
+
+      diff(document, rrDocument, replayer, rrDocument.mirror);
+
+      expect(Array.from(document.head.children)).toEqual([
+        styleC,
+        styleA,
+        styleB,
+      ]);
+      expect([styleA, styleB, styleC].map(rules)).toEqual(expected);
+    });
+  });
+
   describe('diff shadow dom', () => {
     it('should add a shadow dom', () => {
       const tagName = 'DIV';
