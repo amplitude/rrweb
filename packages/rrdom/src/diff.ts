@@ -553,12 +553,17 @@ function insertPreservingCSSOM(
 
 function collectStyleRules(node: Node): [HTMLStyleElement, string[]][] {
   if (node.nodeType !== node.ELEMENT_NODE) return [];
-  const element = node as Element;
   const styleElements: HTMLStyleElement[] = [];
-  if (element.nodeName === 'STYLE')
-    styleElements.push(element as HTMLStyleElement);
-  if (element.firstElementChild)
-    styleElements.push(...Array.from(element.getElementsByTagName('style')));
+  // Shadow trees are detached together with their host, so walk into them too.
+  const collect = (element: Element) => {
+    if (element.nodeName === 'STYLE')
+      styleElements.push(element as HTMLStyleElement);
+    if (element.shadowRoot)
+      for (const child of Array.from(element.shadowRoot.children))
+        collect(child);
+    for (const child of Array.from(element.children)) collect(child);
+  };
+  collect(node as Element);
   const saved: [HTMLStyleElement, string[]][] = [];
   for (const styleElement of styleElements) {
     try {

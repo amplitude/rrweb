@@ -1204,6 +1204,74 @@ describe('diff algorithm for rrdom', () => {
       ]);
       expect([styleA, styleB, styleC].map(rules)).toEqual(expected);
     });
+
+    it('keeps CSSOM-only rules inside the shadow tree of a moved host', async () => {
+      // JSDOM does not build stylesheets for <style> in shadow roots, so this
+      // runs in a real browser.
+      const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      const page = await browser.newPage();
+      await page.goto('about:blank');
+      try {
+        await page.evaluate(
+          fs.readFileSync(
+            path.resolve(__dirname, '../dist/rrdom.umd.cjs'),
+            'utf8',
+          ),
+        );
+        const result = await page.evaluate(`
+          document.write(
+            '<!DOCTYPE html><html><head></head><body>' +
+              '<div id="host"></div><div id="other"></div>' +
+              '</body></html>',
+          );
+          const host = document.getElementById('host');
+          const other = document.getElementById('other');
+          const shadowStyle = document.createElement('style');
+          shadowStyle.textContent = '.a { color: red; }';
+          host.attachShadow({ mode: 'open' }).appendChild(shadowStyle);
+          // Added only through the CSSOM.
+          shadowStyle.sheet.insertRule('.added { color: blue; }', 1);
+          const rules = () =>
+            Array.from(shadowStyle.sheet.cssRules, (rule) => rule.cssText);
+          const before = rules();
+
+          // Reorder <body> to other, host so the diff moves the shadow host.
+          const mirror = rrdom.createMirror();
+          const rrDocument = rrdom.buildFromDom(document, mirror);
+          const rrBody = rrDocument.mirror.getNode(mirror.getId(document.body));
+          const [rrHost, rrOther] = Array.from(rrBody.childNodes);
+          rrBody.removeChild(rrOther);
+          rrBody.insertBefore(rrOther, rrHost);
+          rrdom.diff(
+            document,
+            rrDocument,
+            {
+              mirror,
+              applyCanvas: () => {},
+              applyInput: () => {},
+              applyScroll: () => {},
+              applyStyleSheetMutation: () => {},
+            },
+            rrDocument.mirror,
+          );
+
+          ({
+            order: Array.from(document.body.children, (el) => el.id),
+            before,
+            after: rules(),
+          });
+        `);
+        expect(result.order).toEqual(['other', 'host']);
+        expect(result.before).toHaveLength(2);
+        expect(result.after).toEqual(result.before);
+      } finally {
+        await page.close();
+        await browser.close();
+      }
+    });
   });
 
   describe('diff shadow dom', () => {
