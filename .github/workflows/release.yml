@@ -23,7 +23,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   authorize:
     name: Authorize
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Validate branch for release type
         env:
@@ -55,7 +55,7 @@ jobs:
 
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [authorize]
     environment: npm-release
     permissions:
