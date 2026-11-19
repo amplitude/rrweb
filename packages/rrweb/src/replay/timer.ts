@@ -14,6 +14,7 @@ export class Timer {
   // we avoid O(N) re-indexing on every animation frame and achieve O(1) complexity per action.
   private actionIndex = 0;
   private raf: number | true | null = null;
+  private waitingForAction = false;
   private lastTimestamp: number;
 
   constructor(
@@ -29,7 +30,7 @@ export class Timer {
    * Add an action, possibly after the timer starts.
    */
   public addAction(action: actionWithDelay) {
-    const rafWasActive = this.raf === true;
+    const rafWasActive = this.raf === true && !this.waitingForAction;
     if (
       this.actionIndex >= this.actions.length ||
       this.actions[this.actions.length - 1].delay <= action.delay
@@ -62,7 +63,23 @@ export class Timer {
 
       if (this.timeOffset >= action.delay) {
         this.actionIndex++;
-        action.doAction();
+        const result = action.doAction();
+        if (result) {
+          this.waitingForAction = true;
+          this.raf = true;
+          void result.then(
+            () => this.resumeAfterAction(),
+            (error: unknown) => {
+              // Do not permanently stall playback when an asynchronous action
+              // fails. Surface the error after resuming the timer.
+              this.resumeAfterAction();
+              setTimeout(() => {
+                throw error;
+              });
+            },
+          );
+          return;
+        }
       } else {
         break;
       }
@@ -80,6 +97,7 @@ export class Timer {
         cancelAnimationFrame(this.raf);
       }
       this.raf = null;
+      this.waitingForAction = false;
     }
     this.actions.length = 0;
     this.actionIndex = 0;
@@ -91,6 +109,17 @@ export class Timer {
 
   public isActive() {
     return this.raf !== null;
+  }
+
+  private resumeAfterAction() {
+    this.waitingForAction = false;
+    if (this.raf === null) return;
+
+    // Exclude time spent applying the asynchronous action from replay time.
+    // Otherwise all events that elapsed while yielding would immediately
+    // become due and could cause another long catch-up task.
+    this.lastTimestamp = performance.now();
+    this.raf = requestAnimationFrame(this.rafCheck.bind(this));
   }
 
   private findActionIndex(action: actionWithDelay): number {
