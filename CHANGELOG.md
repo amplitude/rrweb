@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.7 (2026-11-19)</small>
+
+- ci: pin release and style check runners to ubuntu-22.04 ([3f1df11](https://github.com/amplitude/rrweb/commit/3f1df11))
+- ci: pin to ubuntu-24.04, the image ubuntu-latest used before ([1ae94e7](https://github.com/amplitude/rrweb/commit/1ae94e7))
+- test(replay): cover unresolved style events on the virtual DOM path ([2f05d06](https://github.com/amplitude/rrweb/commit/2f05d06))
+- fix(replay): keep CSS-in-JS styles intact when seeking ([ae8753f](https://github.com/amplitude/rrweb/commit/ae8753f))
+- fix(rrdom): keep CSSOM rules in shadow trees of moved hosts ([a13124e](https://github.com/amplitude/rrweb/commit/a13124e))
+- fix(rrdom): keep CSSOM rules of SVG style elements on move ([bbf3b66](https://github.com/amplitude/rrweb/commit/bbf3b66))
+- fix(rrdom): only restore CSSOM of style elements the recording did not re-insert ([18e93f5](https://github.com/amplitude/rrweb/commit/18e93f5))
+
 ## <small>2.1.6 (2026-11-05)</small>
 
 - fix(replay): insert adds whose nextId never arrives instead of dropping them ([69f90ca](https://github.com/amplitude/rrweb/commit/69f90ca))

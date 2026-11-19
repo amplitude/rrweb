@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.7 (2026-11-19)</small>
+
+- fix(replay): keep CSS-in-JS styles intact when seeking ([ae8753f](https://github.com/amplitude/rrweb/commit/ae8753f))
+- fix(rrdom): keep CSSOM rules in shadow trees of moved hosts ([a13124e](https://github.com/amplitude/rrweb/commit/a13124e))
+- fix(rrdom): keep CSSOM rules of SVG style elements on move ([bbf3b66](https://github.com/amplitude/rrweb/commit/bbf3b66))
+- fix(rrdom): only restore CSSOM of style elements the recording did not re-insert ([18e93f5](https://github.com/amplitude/rrweb/commit/18e93f5))
+
 ## <small>2.1.6 (2026-11-05)</small>
 
 **Note:** Version bump only for package @amplitude/rrdom

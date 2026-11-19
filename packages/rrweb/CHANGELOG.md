@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.7 (2026-11-19)</small>
+
+- test(replay): cover unresolved style events on the virtual DOM path ([2f05d06](https://github.com/amplitude/rrweb/commit/2f05d06))
+- fix(replay): keep CSS-in-JS styles intact when seeking ([ae8753f](https://github.com/amplitude/rrweb/commit/ae8753f))
+
 ## <small>2.1.6 (2026-11-05)</small>
 
 - fix(replay): insert adds whose nextId never arrives instead of dropping them ([69f90ca](https://github.com/amplitude/rrweb/commit/69f90ca))
