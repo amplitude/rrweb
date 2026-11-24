@@ -155,6 +155,15 @@ export class Replayer {
   // Used to track StyleSheetObjects adopted on multiple document hosts.
   private styleMirror: StyleSheetMirror = new StyleSheetMirror();
 
+  // Sheets built in the replay iframe's window because their first host was
+  // unresolved, keyed to that window. A host in another document (a nested
+  // iframe) can't adopt them, so it gets a per-window copy instead.
+  private fallbackSheetWindows = new WeakMap<CSSStyleSheet, IWindow>();
+  private fallbackSheetCopies = new WeakMap<
+    CSSStyleSheet,
+    Map<IWindow, CSSStyleSheet>
+  >();
+
   // Used to track video & audio elements, and keep them in sync with general playback.
   private mediaManager: MediaManager;
 
@@ -2586,6 +2595,8 @@ export class Replayer {
       try {
         newStyleSheet = new hostWindow.CSSStyleSheet();
         this.styleMirror.add(newStyleSheet, style.styleId);
+        if (!targetHost)
+          this.fallbackSheetWindows.set(newStyleSheet, hostWindow);
         // To reuse the code of applying stylesheet rules
         this.applyStyleSheetRule(
           {
@@ -2604,15 +2615,29 @@ export class Replayer {
     const MAX_RETRY_TIME = 10;
     let count = 0;
     const adoptStyleSheets = (targetHost: Node, styleIds: number[]) => {
+      const targetWindow = (
+        targetHost.nodeName === '#document'
+          ? (targetHost as Document).defaultView
+          : targetHost.ownerDocument?.defaultView
+      ) as IWindow | null | undefined;
       const stylesToAdopt = styleIds
         .map((styleId) => this.styleMirror.getStyle(styleId))
-        .filter((style) => style !== null) as CSSStyleSheet[];
-      if (hasShadowRoot(targetHost))
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
-          stylesToAdopt;
-      else if (targetHost.nodeName === '#document')
-        (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+        .filter((style) => style !== null)
+        .map((style) =>
+          this.sheetForWindow(style as CSSStyleSheet, targetWindow),
+        );
+      try {
+        if (hasShadowRoot(targetHost))
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          (targetHost as HTMLElement).shadowRoot!.adoptedStyleSheets =
+            stylesToAdopt;
+        else if (targetHost.nodeName === '#document')
+          (targetHost as Document).adoptedStyleSheets = stylesToAdopt;
+      } catch (e) {
+        // A constructed sheet from another document throws NotAllowedError.
+        // Leave the host unstyled rather than abort playback.
+        this.warn('Failed to adopt stylesheets', e);
+      }
 
       /**
        * In the live mode where events are transferred over network without strict order guarantee, some newer events are applied before some old events and adopted stylesheets may haven't been created.
@@ -2627,6 +2652,40 @@ export class Replayer {
       }
     };
     adoptStyleSheets(targetHost, data.styleIds);
+  }
+
+  /**
+   * Return a sheet the given window's documents can adopt. Only sheets built
+   * for an unresolved host can belong to the wrong window. They get a copy
+   * of their current rules built in the target window, cached per window.
+   */
+  private sheetForWindow(
+    sheet: CSSStyleSheet,
+    targetWindow: IWindow | null | undefined,
+  ): CSSStyleSheet {
+    const builtIn = this.fallbackSheetWindows.get(sheet);
+    if (!builtIn || !targetWindow || builtIn === targetWindow) return sheet;
+    let copies = this.fallbackSheetCopies.get(sheet);
+    if (!copies) {
+      copies = new Map();
+      this.fallbackSheetCopies.set(sheet, copies);
+    }
+    const cached = copies.get(targetWindow);
+    if (cached) return cached;
+    try {
+      const copy = new targetWindow.CSSStyleSheet();
+      Array.from(sheet.cssRules).forEach((rule) => {
+        try {
+          copy.insertRule(rule.cssText, copy.cssRules.length);
+        } catch (e) {
+          // skip a rule the target document can't parse
+        }
+      });
+      copies.set(targetWindow, copy);
+      return copy;
+    } catch (e) {
+      return sheet;
+    }
   }
 
   private legacy_resolveMissingNode(

@@ -1286,6 +1286,27 @@ describe('replayer', function () {
           fontSize: '24px',
         });
       }
+
+      // The host in the nested iframe can't adopt sheets built in the top
+      // replay document, so it must get its own copies, not throw.
+      const nested = await contentDocument!.evaluate(() => {
+        const doc = (document.querySelector('#nested') as HTMLIFrameElement)
+          .contentDocument!;
+        const root = doc.querySelector('#iframe-host')!.shadowRoot!;
+        const computed = doc.defaultView!.getComputedStyle(
+          root.querySelector('span')!,
+        );
+        return {
+          sheets: root.adoptedStyleSheets.length,
+          color: computed.color,
+          fontSize: computed.fontSize,
+        };
+      });
+      expect(nested).toEqual({
+        sheets: 2,
+        color: 'rgb(255, 0, 0)',
+        fontSize: '24px',
+      });
     };
     await checkCorrectness();
 

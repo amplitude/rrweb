@@ -9,6 +9,9 @@ import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
  *
  * Two variants of the unresolved host are covered: styleId 1 comes with
  * `id: -1`, and styleId 2 comes with an id that never appears in the stream.
+ *
+ * A third host lives in a nested iframe. The replayer builds those sheets in
+ * the top replay document, which the iframe's document can't adopt directly.
  */
 const now = Date.now();
 
@@ -65,6 +68,13 @@ const events: eventWithTime[] = [
                 childNodes: [
                   shadowHost(10, 'shadow-host-1'),
                   shadowHost(20, 'shadow-host-2'),
+                  {
+                    type: 2,
+                    tagName: 'iframe',
+                    attributes: { id: 'nested' },
+                    childNodes: [],
+                    id: 30,
+                  },
                 ],
                 id: 5,
               },
@@ -122,6 +132,69 @@ const events: eventWithTime[] = [
       styleIds: [1, 2],
     },
     timestamp: now + 300,
+  },
+  {
+    type: EventType.IncrementalSnapshot,
+    data: {
+      source: IncrementalSource.Mutation,
+      adds: [
+        {
+          parentId: 30,
+          nextId: null,
+          node: {
+            type: 0,
+            childNodes: [
+              {
+                type: 2,
+                tagName: 'html',
+                attributes: {},
+                childNodes: [
+                  {
+                    type: 2,
+                    tagName: 'head',
+                    attributes: {},
+                    childNodes: [],
+                    rootId: 40,
+                    id: 42,
+                  },
+                  {
+                    type: 2,
+                    tagName: 'body',
+                    attributes: {},
+                    childNodes: [
+                      {
+                        ...shadowHost(50, 'iframe-host'),
+                        rootId: 40,
+                      },
+                    ],
+                    rootId: 40,
+                    id: 43,
+                  },
+                ],
+                rootId: 40,
+                id: 41,
+              },
+            ],
+            compatMode: 'CSS1Compat',
+            id: 40,
+          },
+        },
+      ],
+      removes: [],
+      texts: [],
+      attributes: [],
+      isAttachIframe: true,
+    },
+    timestamp: now + 350,
+  },
+  {
+    type: EventType.IncrementalSnapshot,
+    data: {
+      source: IncrementalSource.AdoptedStyleSheet,
+      id: 50,
+      styleIds: [1, 2],
+    },
+    timestamp: now + 400,
   },
 ];
 
