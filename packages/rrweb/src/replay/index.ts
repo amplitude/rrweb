@@ -2560,20 +2560,28 @@ export class Replayer {
 
   private applyAdoptedStyleSheet(data: adoptedStyleSheetData) {
     const targetHost = this.mirror.getNode(data.id);
-    if (!targetHost) return;
+    /**
+     * Constructed StyleSheet can't share across multiple documents.
+     * The replayer has to get the correct host window to recreate a StyleSheetObject.
+     */
+    let hostWindow: IWindow | null = null;
+    if (!targetHost) {
+      // The recorder sends a shared sheet's rules only once, with the first
+      // host that adopts it. Later hosts reference it by styleId alone. That
+      // first event can name a host the replayer can't resolve: the recorder
+      // emits id -1 when the host isn't serialized yet, or the host's add
+      // never arrives. Register the sheets anyway, or every later host that
+      // shares them stays unstyled for the rest of the session. Hosts almost
+      // always live in the replay document, so build them in its window.
+      hostWindow = (this.iframe.contentWindow as IWindow | null) || null;
+    } else if (hasShadowRoot(targetHost))
+      hostWindow = targetHost.ownerDocument?.defaultView || null;
+    else if (targetHost.nodeName === '#document')
+      hostWindow = (targetHost as Document).defaultView;
+
     // Create StyleSheet objects which will be adopted after.
     data.styles?.forEach((style) => {
       let newStyleSheet: CSSStyleSheet | null = null;
-      /**
-       * Constructed StyleSheet can't share across multiple documents.
-       * The replayer has to get the correct host window to recreate a StyleSheetObject.
-       */
-      let hostWindow: IWindow | null = null;
-      if (hasShadowRoot(targetHost))
-        hostWindow = targetHost.ownerDocument?.defaultView || null;
-      else if (targetHost.nodeName === '#document')
-        hostWindow = (targetHost as Document).defaultView;
-
       if (!hostWindow) return;
       try {
         newStyleSheet = new hostWindow.CSSStyleSheet();
@@ -2590,6 +2598,8 @@ export class Replayer {
         // In case some browsers don't support constructing StyleSheet.
       }
     });
+
+    if (!targetHost) return;
 
     const MAX_RETRY_TIME = 10;
     let count = 0;
