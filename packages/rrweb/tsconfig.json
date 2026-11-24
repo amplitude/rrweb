@@ -28,10 +28,10 @@
       "path": "../rrdom"
     },
     {
-      "path": "../types"
+      "path": "../rrweb-snapshot"
     },
     {
-      "path": "../rrweb-snapshot"
+      "path": "../types"
     },
     {
       "path": "../utils"

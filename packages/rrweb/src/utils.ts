@@ -419,23 +419,21 @@ export function hasShadowRoot<T extends Node | RRNode>(
 }
 
 /**
- * Walk a CSSRuleList to the nested rule at `position`.
- * Returns null when a parent rule is missing (events can arrive before the
- * rule that contains them). Each entry is one nesting level. #1775
+ * Resolves a rule from its path of indices, e.g. [4, 1] is the second rule
+ * inside the fifth rule of the stylesheet. Returns undefined if the path does
+ * not exist in `rules`.
  */
 export function getNestedRule(
   rules: CSSRuleList,
   position: number[],
-): CSSGroupingRule | null {
-  const rule = rules?.[position[0]] as CSSGroupingRule | null;
-  if (!rule) {
-    return null;
+): CSSGroupingRule {
+  let rule = rules[position[0]] as CSSGroupingRule | undefined;
+  for (let i = 1; i < position.length && rule; i++) {
+    rule = (rule.cssRules as CSSRuleList | undefined)?.[position[i]] as
+      | CSSGroupingRule
+      | undefined;
   }
-  if (position.length === 1) {
-    return rule;
-  } else {
-    return getNestedRule(rule.cssRules, position.slice(1));
-  }
+  return rule as CSSGroupingRule;
 }
 
 export function getPositionsAndIndex(nestedIndex: number[]) {

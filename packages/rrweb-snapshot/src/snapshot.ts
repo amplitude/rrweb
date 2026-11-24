@@ -1010,7 +1010,7 @@ export function serializeNodeWithId(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
-    /** @internal Tracks styleIds whose rules have already been serialized; shared across recursive calls within one document traversal. Not forwarded into iframe documents because CSSStyleSheet instances cannot be shared across browsing contexts. */
+    /** @internal Tracks recording-side styleIds whose CSS rules were already inlined; shared across the document tree and iframe snapshots for dedupe with later mutation adds. */
     _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
@@ -1121,8 +1121,13 @@ export function serializeNodeWithId(
     onSerialize(n);
   }
   let recordChild = !skipChild;
+  // `needBlock` is deleted below, but the iframe load hook still needs it.
+  // A blocked iframe is a placeholder: serializing its document attaches an
+  // observer that retains the iframe window until recording stops.
+  let isBlockedElement = false;
   if (serializedNode.type === NodeType.Element) {
-    recordChild = recordChild && !serializedNode.needBlock;
+    isBlockedElement = Boolean(serializedNode.needBlock);
+    recordChild = recordChild && !isBlockedElement;
     // this property was not needed in replay side
     delete serializedNode.needBlock;
     const shadowRootEl = dom.shadowRoot(n);
@@ -1234,7 +1239,8 @@ export function serializeNodeWithId(
 
   if (
     serializedNode.type === NodeType.Element &&
-    serializedNode.tagName === 'iframe'
+    serializedNode.tagName === 'iframe' &&
+    !isBlockedElement
   ) {
     onceIframeLoaded(
       n as HTMLIFrameElement,
@@ -1262,6 +1268,7 @@ export function serializeNodeWithId(
             preserveWhiteSpace,
             onSerialize,
             onAdoptedStyleSheet,
+            _emittedStyleIds: emittedStyleIds,
             onIframeLoad,
             iframeLoadTimeout,
             onStylesheetLoad,
@@ -1357,6 +1364,8 @@ function snapshot(
     preserveWhiteSpace?: boolean;
     onSerialize?: (n: Node) => unknown;
     onAdoptedStyleSheet?: (sheet: CSSStyleSheet) => number;
+    /** @internal Tracks styleIds whose rules were already serialized; shared with mutation adds. */
+    _emittedStyleIds?: Set<number>;
     onIframeLoad?: (
       iframeNode: HTMLIFrameElement,
       node: serializedElementNodeWithId,
@@ -1389,6 +1398,7 @@ function snapshot(
     preserveWhiteSpace,
     onSerialize,
     onAdoptedStyleSheet,
+    _emittedStyleIds,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,
@@ -1442,6 +1452,7 @@ function snapshot(
     preserveWhiteSpace,
     onSerialize,
     onAdoptedStyleSheet,
+    _emittedStyleIds,
     onIframeLoad,
     iframeLoadTimeout,
     onStylesheetLoad,

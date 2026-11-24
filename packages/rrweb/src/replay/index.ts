@@ -324,9 +324,7 @@ export class Replayer {
 
         this.snapshotAdoptedStyleSheetQueue.forEach(
           ({ id, adoptedStyleSheets }) => {
-            const node = this.mirror.getNode(id);
-            if (node)
-              this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
+            this.applyQueuedSnapshotAdoptedStyleSheets(id, adoptedStyleSheets);
           },
         );
         this.snapshotAdoptedStyleSheetQueue = [];
@@ -1634,10 +1632,16 @@ export class Replayer {
       case IncrementalSource.StyleDeclaration: {
         if (this.usingVirtualDom) {
           if (d.styleId) this.constructedStyleMutations.push(d);
-          else if (d.id)
-            (
-              this.virtualDom.mirror.getNode(d.id) as RRStyleElement | null
-            )?.rules.push(d);
+          else if (d.id) {
+            // The id may not belong to a <style> (e.g. events from another tab
+            // of the same session share the id space). The non-virtual path
+            // ignores those because the node has no sheet; do the same here
+            // instead of throwing and aborting the rest of the seek.
+            const target = this.virtualDom.mirror.getNode(
+              d.id,
+            ) as RRStyleElement | null;
+            target?.rules?.push(d);
+          }
         } else this.applyStyleSheetMutation(d);
         break;
       }
@@ -1869,9 +1873,26 @@ export class Replayer {
         return;
       }
       const afterAppend = (node: Node | RRNode, id: number) => {
+        const inlineAdoptedStyleSheets =
+          this.inlineAdoptedStyleSheetsFromMutationNode(mutation.node, node);
+
+        if (inlineAdoptedStyleSheets && this.usingVirtualDom) {
+          this.snapshotAdoptedStyleSheetQueue.push({
+            id,
+            adoptedStyleSheets: inlineAdoptedStyleSheets,
+          });
+        }
+
         // Skip the plugin onBuild callback for virtual dom
         if (this.usingVirtualDom) return;
         applyDialogToTopLevel(node);
+        if (inlineAdoptedStyleSheets) {
+          this.ensureShadowHostForInlineAdoptedStyles(mutation.node, node);
+          this.applySnapshotAdoptedStyleSheets(
+            node as Node,
+            inlineAdoptedStyleSheets,
+          );
+        }
         for (const plugin of this.config.plugins || []) {
           if (plugin.onBuild) plugin.onBuild(node, { id, replayer: this });
         }
@@ -2068,6 +2089,44 @@ export class Replayer {
        * inserted) and the loop continues.
        */
       if (queue.length === pendingCount) {
+        /**
+         * An add can name a `nextId` that never reaches the replayer, e.g. a
+         * sibling elided when mutation events were merged before upload.
+         * Waiting for it is pointless, and dropping the add also drops every
+         * descendant queued behind it (a whole page section in production).
+         * Insert those adds without the sibling hint instead; the adds that
+         * were waiting on them resolve in the next pass.
+         *
+         * An add whose own node is already in the mirror is a mutation being
+         * applied a second time (e.g. a duplicated event). Inserting it would
+         * move the existing node to the end of its parent, or leave a second
+         * copy when the serialized node differs, so it is still dropped.
+         */
+        const queuedIds = new Set(queue.map((m) => m.node.id));
+        let salvaged = 0;
+        for (let i = 0; i < queue.length; i++) {
+          const m = queue[i];
+          if (
+            !mirror.getNode(m.node.id) &&
+            mirror.getNode(m.parentId) &&
+            m.nextId !== null &&
+            m.nextId !== undefined &&
+            m.nextId !== -1 &&
+            !mirror.getNode(m.nextId) &&
+            !queuedIds.has(m.nextId)
+          ) {
+            // copy so seeking back re-applies the original event untouched
+            queue[i] = { ...m, nextId: null };
+            salvaged++;
+          }
+        }
+        if (salvaged) {
+          this.warn(
+            'Inserting nodes without their next sibling since it was never recorded',
+            salvaged,
+          );
+          continue;
+        }
         this.warn(
           'Dropping the resolve queue since none of the remaining nodes can be resolved',
           resolveTrees.map((tree) => ({
@@ -2395,29 +2454,77 @@ export class Replayer {
     data: styleDeclarationData,
     styleSheet: CSSStyleSheet,
   ) {
+    const rule = getNestedRule(styleSheet.cssRules, data.index) as unknown as
+      | CSSStyleRule
+      | undefined;
+    // Recordings from older recorders can carry an index that does not point at
+    // a style rule (e.g. it lands on an @media block). Skip it rather than
+    // throwing, which during a seek aborts the whole virtual DOM flush.
+    if (!rule?.style) return;
+
     if (data.set) {
-      const rule = getNestedRule(
-        styleSheet.rules,
-        data.index,
-      ) as unknown as CSSStyleRule | null;
-      if (rule?.style) {
-        rule.style.setProperty(
-          data.set.property,
-          data.set.value,
-          data.set.priority,
-        );
-      }
+      rule.style.setProperty(
+        data.set.property,
+        data.set.value,
+        data.set.priority,
+      );
     }
 
     if (data.remove) {
-      const rule = getNestedRule(
-        styleSheet.rules,
-        data.index,
-      ) as unknown as CSSStyleRule | null;
-      if (rule?.style) {
-        rule.style.removeProperty(data.remove.property);
-      }
+      rule.style.removeProperty(data.remove.property);
     }
+  }
+
+  private applyQueuedSnapshotAdoptedStyleSheets(
+    id: number,
+    adoptedStyleSheets: serializedAdoptedStyleSheet[],
+  ) {
+    const node = this.mirror.getNode(id);
+    if (!node) return;
+    const meta = this.mirror.getMeta(node);
+    if (
+      meta?.type === NodeType.Element &&
+      meta.isShadowHost &&
+      node.nodeType === Node.ELEMENT_NODE &&
+      !hasShadowRoot(node as Element)
+    ) {
+      (node as Element).attachShadow({ mode: 'open' });
+    }
+    this.applySnapshotAdoptedStyleSheets(node, adoptedStyleSheets);
+  }
+
+  private inlineAdoptedStyleSheetsFromMutationNode(
+    mutationNode: addedNodeMutation['node'],
+    builtNode: Node | RRNode,
+  ): serializedAdoptedStyleSheet[] | null {
+    if (
+      !('adoptedStyleSheets' in mutationNode) ||
+      !mutationNode.adoptedStyleSheets?.length
+    ) {
+      return null;
+    }
+    if (mutationNode.type === NodeType.Document) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    if (mutationNode.type === NodeType.Element && mutationNode.isShadowHost) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    if (hasShadowRoot(builtNode as Node)) {
+      return mutationNode.adoptedStyleSheets;
+    }
+    return null;
+  }
+
+  private ensureShadowHostForInlineAdoptedStyles(
+    mutationNode: addedNodeMutation['node'],
+    builtNode: Node | RRNode,
+  ) {
+    if (mutationNode.type !== NodeType.Element || !mutationNode.isShadowHost) {
+      return;
+    }
+    const el = builtNode as Element;
+    if (el.nodeType !== Node.ELEMENT_NODE || hasShadowRoot(el)) return;
+    el.attachShadow({ mode: 'open' });
   }
 
   private applySnapshotAdoptedStyleSheets(

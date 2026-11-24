@@ -96,7 +96,7 @@ export function record<T = eventWithTime>(
     userTriggeredOnInput = false,
     collectFonts = false,
     inlineImages = false,
-    captureAdoptedStyleSheets = true,
+    captureAdoptedStyleSheets = false,
     plugins,
     keepIframeSrcFn = () => false,
     ignoreCSSAttributes = new Set([]),
@@ -334,6 +334,7 @@ export function record<T = eventWithTime>(
       canvasManager,
       keepIframeSrcFn,
       processedNodeManager,
+      captureAdoptedStyleSheets,
     },
     mirror,
   });
@@ -392,6 +393,9 @@ export function record<T = eventWithTime>(
       // ids are always fresh and in sync with the snapshot's serialized styleIds.
       onAdoptedStyleSheet: captureAdoptedStyleSheets
         ? (sheet) => stylesheetManager.styleMirror.add(sheet)
+        : undefined,
+      _emittedStyleIds: captureAdoptedStyleSheets
+        ? stylesheetManager.getInlinedAdoptedStyleSheetRuleIds()
         : undefined,
       onIframeLoad: (iframe, childSn) => {
         iframeManager.attachIframe(iframe, childSn);
@@ -544,6 +548,7 @@ export function record<T = eventWithTime>(
           stylesheetManager,
           shadowDomManager,
           processedNodeManager,
+          captureAdoptedStyleSheets,
           canvasManager,
           ignoreCSSAttributes,
           plugins:
@@ -661,5 +666,7 @@ record.takeFullSnapshot = (isCheckout?: boolean) => {
 };
 
 record.mirror = mirror;
+/** Allows hosts to reuse native clicks without installing another listener. */
+record.supportsNativeMouseInteraction = true;
 
 export default record;

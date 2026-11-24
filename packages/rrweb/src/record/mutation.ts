@@ -93,6 +93,7 @@ export default class MutationBuffer {
   private shadowDomManager: observerParam['shadowDomManager'];
   private canvasManager: observerParam['canvasManager'];
   private processedNodeManager: observerParam['processedNodeManager'];
+  private captureAdoptedStyleSheets: observerParam['captureAdoptedStyleSheets'];
   private unattachedDoc: HTMLDocument;
 
   public init(options: MutationBufferParam) {
@@ -120,6 +121,7 @@ export default class MutationBuffer {
         'shadowDomManager',
         'canvasManager',
         'processedNodeManager',
+        'captureAdoptedStyleSheets',
       ] as const
     ).forEach((key) => {
       // just a type trick, the runtime result is correct
@@ -355,6 +357,12 @@ export default class MutationBuffer {
         onStylesheetLoad: (link, childSn) => {
           this.stylesheetManager.attachLinkElement(link, childSn);
         },
+        onAdoptedStyleSheet: this.captureAdoptedStyleSheets
+          ? (sheet) => this.stylesheetManager.styleMirror.add(sheet)
+          : undefined,
+        _emittedStyleIds: this.captureAdoptedStyleSheets
+          ? this.stylesheetManager.getInlinedAdoptedStyleSheetRuleIds()
+          : undefined,
         cssCaptured,
       });
       if (sn) {

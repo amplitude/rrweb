@@ -1158,6 +1158,187 @@ describe('diff algorithm for rrdom', () => {
     });
   });
 
+  describe('moving style elements', () => {
+    function rules(style: Element) {
+      return Array.from(
+        (style as HTMLStyleElement).sheet!.cssRules,
+        (rule) => rule.cssText,
+      );
+    }
+
+    it('keeps CSSOM-only rules of style elements the diff moves', () => {
+      document.write(
+        '<!DOCTYPE html><html><head>' +
+          '<style>.a { color: red; }</style>' +
+          '<style>.b { color: red; }</style>' +
+          '<style>.c { color: red; }</style>' +
+          '</head><body></body></html>',
+      );
+      const [styleA, styleB, styleC] = Array.from(document.head.children);
+      // CSS-in-JS libraries (JSS) change sheets through the CSSOM only, so the
+      // text content of the <style> no longer describes the sheet.
+      (styleA as HTMLStyleElement).sheet!.insertRule(
+        '.added { color: blue; }',
+        1,
+      );
+      (styleC as HTMLStyleElement).sheet!.deleteRule(0);
+      const expected = [styleA, styleB, styleC].map(rules);
+      expect(expected[0]).toHaveLength(2);
+      expect(expected[2]).toHaveLength(0);
+
+      // What a seek does: mirror the live DOM into rrdom, apply mutations there,
+      // then diff back. Here the mutations reorder <head> to C, A, B.
+      const rrDocument = buildFromDom(document, mirror);
+      const rrHead = rrDocument.mirror.getNode(mirror.getId(document.head))!;
+      const [rrA, rrB, rrC] = Array.from(rrHead.childNodes);
+      rrHead.removeChild(rrC);
+      rrHead.insertBefore(rrC, rrA);
+      expect(rrHead.childNodes).toEqual([rrC, rrA, rrB]);
+
+      diff(document, rrDocument, replayer, rrDocument.mirror);
+
+      expect(Array.from(document.head.children)).toEqual([
+        styleC,
+        styleA,
+        styleB,
+      ]);
+      expect([styleA, styleB, styleC].map(rules)).toEqual(expected);
+    });
+
+    it('lets the browser re-parse a style element the recorded page re-inserted', () => {
+      document.write(
+        '<!DOCTYPE html><html><head>' +
+          '<style>button { color: black; }</style>' +
+          '<meta name="example" content="demo">' +
+          '</head><body></body></html>',
+      );
+      const [style, meta] = Array.from(document.head.children);
+      (style as HTMLStyleElement).sheet!.insertRule(
+        'button { color: blue; }',
+        1,
+      );
+      expect(rules(style)).toHaveLength(2);
+
+      // The recorded page moved <style> after <meta>. The recorder captures
+      // that as a remove and an add of the same id, and replaying the add
+      // creates a new virtual node for it. On the recorded page the browser
+      // re-parsed the sheet from its text, dropping the blue rule.
+      const rrDocument = buildFromDom(document, mirror);
+      const rrHead = rrDocument.mirror.getNode(mirror.getId(document.head))!;
+      const [rrStyle] = Array.from(rrHead.childNodes);
+      const [rrText] = Array.from(rrStyle.childNodes);
+      const styleMeta = rrDocument.mirror.getMeta(rrStyle)!;
+      const textMeta = rrDocument.mirror.getMeta(rrText)!;
+      rrHead.removeChild(rrStyle);
+      rrDocument.mirror.removeNodeFromMap(rrStyle);
+      const reAdded = rrDocument.createElement('style');
+      const reAddedText = rrDocument.createTextNode('button { color: black; }');
+      reAdded.appendChild(reAddedText);
+      rrDocument.mirror.add(reAdded, styleMeta);
+      rrDocument.mirror.add(reAddedText, textMeta);
+      rrHead.appendChild(reAdded);
+
+      diff(document, rrDocument, replayer, rrDocument.mirror);
+
+      expect(Array.from(document.head.children)).toEqual([meta, style]);
+      expect(rules(style)).toEqual(['button {color: black;}']);
+    });
+
+    /**
+     * Builds `<body>` from `bodyHtml`, lets `setup` add a CSSOM-only rule to a
+     * <style> inside #moved, then diffs <body> into the order other, moved.
+     * Runs in a real browser: JSDOM does not build sheets for <style> in shadow
+     * roots or SVG.
+     */
+    async function moveAndReadRules(bodyHtml: string, setup: string) {
+      const browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      const page = await browser.newPage();
+      await page.goto('about:blank');
+      try {
+        await page.evaluate(
+          fs.readFileSync(
+            path.resolve(__dirname, '../dist/rrdom.umd.cjs'),
+            'utf8',
+          ),
+        );
+        return await page.evaluate(`
+          document.write(
+            '<!DOCTYPE html><html><head></head><body>' +
+              ${JSON.stringify(bodyHtml)} +
+              '<div id="other"></div></body></html>',
+          );
+          const moved = document.getElementById('moved');
+          const other = document.getElementById('other');
+          const style = (() => { ${setup} })();
+          const rules = () =>
+            Array.from(style.sheet.cssRules, (rule) => rule.cssText);
+          const before = rules();
+
+          const mirror = rrdom.createMirror();
+          const rrDocument = rrdom.buildFromDom(document, mirror);
+          const rrBody = rrDocument.mirror.getNode(mirror.getId(document.body));
+          const [rrMoved, rrOther] = Array.from(rrBody.childNodes);
+          rrBody.removeChild(rrOther);
+          rrBody.insertBefore(rrOther, rrMoved);
+          rrdom.diff(
+            document,
+            rrDocument,
+            {
+              mirror,
+              applyCanvas: () => {},
+              applyInput: () => {},
+              applyScroll: () => {},
+              applyStyleSheetMutation: () => {},
+            },
+            rrDocument.mirror,
+          );
+
+          ({
+            order: Array.from(document.body.children, (el) => el.id),
+            before,
+            after: rules(),
+          });
+        `);
+      } finally {
+        await page.close();
+        await browser.close();
+      }
+    }
+
+    it('keeps CSSOM-only rules inside the shadow tree of a moved host', async () => {
+      const result = await moveAndReadRules(
+        '<div id="moved"></div>',
+        `
+          const style = document.createElement('style');
+          style.textContent = '.a { color: red; }';
+          moved.attachShadow({ mode: 'open' }).appendChild(style);
+          style.sheet.insertRule('.added { color: blue; }', 1);
+          return style;
+        `,
+      );
+      expect(result.order).toEqual(['other', 'moved']);
+      expect(result.before).toHaveLength(2);
+      expect(result.after).toEqual(result.before);
+    });
+
+    it('keeps CSSOM-only rules of SVG style elements the diff moves', async () => {
+      const result = await moveAndReadRules(
+        '<svg id="moved"><style>.a { fill: red; }</style></svg>',
+        `
+          const style = moved.querySelector('style');
+          style.sheet.insertRule('.added { fill: blue; }', 1);
+          return style;
+        `,
+      );
+      expect(result.order).toEqual(['other', 'moved']);
+      expect(result.before).toHaveLength(2);
+      expect(result.after).toEqual(result.before);
+    });
+  });
+
   describe('diff shadow dom', () => {
     it('should add a shadow dom', () => {
       const tagName = 'DIV';

@@ -1,6 +1,7 @@
 import { createMirror as createNodeMirror } from '@amplitude/rrweb-snapshot';
 import type { Mirror as NodeMirror } from '@amplitude/rrweb-snapshot';
 import { NodeType as RRNodeType } from '@amplitude/rrweb-types';
+import { nodesBuiltFromDom } from './diff';
 import type {
   IMirror,
   serializedNodeWithId,
@@ -284,6 +285,7 @@ export function buildFromNode(
     }
     rrdom.mirror.add(rrNode, { ...sn });
   }
+  nodesBuiltFromDom.add(rrNode);
 
   return rrNode;
 }

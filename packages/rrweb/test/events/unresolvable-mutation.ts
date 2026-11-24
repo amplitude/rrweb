@@ -5,7 +5,8 @@ const now = Date.now();
 
 /**
  * A mutation where some added nodes reference a `nextId` that is never
- * serialized, so they can never be taken off the replayer's resolve queue.
+ * serialized, plus a child and a sibling that depend on one of them, and an
+ * add whose parent never exists.
  */
 const events: eventWithTime[] = [
   {
@@ -82,9 +83,21 @@ const events: eventWithTime[] = [
             childNodes: [],
           },
         },
+        // waits on 201, which only gets inserted once its nextId is dropped
+        {
+          parentId: 100,
+          nextId: 201,
+          node: {
+            id: 206,
+            type: 2,
+            tagName: 'div',
+            attributes: { id: 'waits-on-unresolvable' },
+            childNodes: [],
+          },
+        },
         ...[201, 202, 203, 204, 205].map((id) => ({
           parentId: 100,
-          // 9999 is never added by any event, so this add can never resolve
+          // 9999 is never added by any event, so this nextId can never resolve
           nextId: 9999,
           node: {
             id,
@@ -94,6 +107,29 @@ const events: eventWithTime[] = [
             childNodes: [],
           },
         })),
+        {
+          parentId: 201,
+          nextId: null,
+          node: {
+            id: 207,
+            type: 2,
+            tagName: 'span',
+            attributes: { id: 'child-of-unresolvable' },
+            childNodes: [],
+          },
+        },
+        {
+          // 8888 is never added by any event, so this add is dropped
+          parentId: 8888,
+          nextId: null,
+          node: {
+            id: 208,
+            type: 2,
+            tagName: 'div',
+            attributes: { id: 'missing-parent' },
+            childNodes: [],
+          },
+        },
       ],
     },
     timestamp: now + 100,

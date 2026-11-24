@@ -14,6 +14,16 @@ export class StylesheetManager {
   private mutationCb: mutationCallBack;
   private adoptedStyleSheetCb: adoptedStyleSheetCallback;
   public styleMirror = new StyleSheetMirror();
+  /**
+   * Recording-side styleIds whose CSS rules were already inlined in a full
+   * snapshot or prior mutation add. Shared across all mutation buffers and
+   * reset with styleMirror on each full snapshot.
+   */
+  private inlinedAdoptedStyleSheetRuleIds = new Set<number>();
+
+  public getInlinedAdoptedStyleSheetRuleIds(): Set<number> {
+    return this.inlinedAdoptedStyleSheetRuleIds;
+  }
 
   constructor(options: {
     mutationCb: mutationCallBack;
@@ -89,6 +99,7 @@ export class StylesheetManager {
   public reset() {
     this.styleMirror.reset();
     this.trackedLinkElements = new WeakSet();
+    this.inlinedAdoptedStyleSheetRuleIds.clear();
   }
 
   // TODO: take snapshot on stylesheet reload by applying event listener

@@ -1,4 +1,10 @@
-import { ReplayerEvents } from '@amplitude/rrweb-types';
+import {
+  EventType,
+  IncrementalSource,
+  NodeType,
+  ReplayerEvents,
+} from '@amplitude/rrweb-types';
+import type { eventWithTime } from '@amplitude/rrweb-types';
 import 'construct-style-sheets-polyfill';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,6 +16,7 @@ import adoptedStyleSheetSharedInSnapshot from './events/adopted-style-sheet-shar
 import adoptedStyleSheetSharedWithIncrementals from './events/adopted-style-sheet-shared-with-incrementals';
 import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
+import adoptedStyleSheetMutationAdd from './events/adopted-style-sheet-mutation-add';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
 import iframeEvents from './events/iframe';
@@ -185,6 +192,157 @@ describe('replayer', function () {
 
     await assertDomSnapshot(page);
   });
+
+  // The replayer only switches to the virtual DOM at the first mutation of a
+  // fast forward, so style events before it go to the real DOM and style
+  // events after it go through the virtual DOM and the diff. Cover both.
+  it.each([
+    ['the real DOM', 200],
+    ['the virtual DOM', 50],
+  ])(
+    'keeps fast forwarding past style events that do not resolve, through %s',
+    async (_, mutationAt) => {
+      const t0 = Date.now();
+      const styleEvents = [
+        {
+          type: EventType.Meta,
+          data: { href: 'http://localhost', width: 1000, height: 800 },
+          timestamp: t0,
+        },
+        {
+          type: EventType.FullSnapshot,
+          data: {
+            node: {
+              type: NodeType.Document,
+              id: 1,
+              childNodes: [
+                {
+                  type: NodeType.Element,
+                  tagName: 'html',
+                  id: 2,
+                  attributes: {},
+                  childNodes: [
+                    {
+                      type: NodeType.Element,
+                      tagName: 'head',
+                      id: 3,
+                      attributes: {},
+                      childNodes: [
+                        {
+                          type: NodeType.Element,
+                          tagName: 'style',
+                          id: 4,
+                          attributes: {
+                            id: 'target',
+                            _cssText:
+                              '.a { color: red; }@media (min-width: 1px) { .b { color: blue; } }',
+                          },
+                          childNodes: [],
+                        },
+                      ],
+                    },
+                    {
+                      type: NodeType.Element,
+                      tagName: 'body',
+                      id: 5,
+                      attributes: {},
+                      childNodes: [
+                        {
+                          type: NodeType.Element,
+                          tagName: 'div',
+                          id: 6,
+                          attributes: { class: 'b' },
+                          childNodes: [
+                            { type: NodeType.Text, id: 7, textContent: 'b' },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            initialOffset: { top: 0, left: 0 },
+          },
+          timestamp: t0 + 10,
+        },
+        // Older recorders dropped the position of the @media block, so this
+        // declaration points at the @media rule itself, which has no style.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleDeclaration,
+            id: 4,
+            index: [1],
+            set: { property: 'color', value: 'green', priority: '' },
+          },
+          timestamp: t0 + 100,
+        },
+        // A rule event whose id is not a <style>, e.g. from another tab of the
+        // same session.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleSheetRule,
+            id: 7,
+            adds: [{ rule: '.x { color: red; }', index: 0 }],
+          },
+          timestamp: t0 + 150,
+        },
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.Mutation,
+            texts: [],
+            attributes: [],
+            removes: [],
+            adds: [
+              {
+                parentId: 5,
+                nextId: null,
+                node: {
+                  type: NodeType.Element,
+                  tagName: 'div',
+                  id: 8,
+                  attributes: { id: 'after' },
+                  childNodes: [],
+                },
+              },
+            ],
+          },
+          timestamp: t0 + mutationAt,
+        },
+        // The full path of `.b` inside the @media block.
+        {
+          type: EventType.IncrementalSnapshot,
+          data: {
+            source: IncrementalSource.StyleDeclaration,
+            id: 4,
+            index: [1, 0],
+            set: { property: 'color', value: 'rgb(128, 0, 128)', priority: '' },
+          },
+          timestamp: t0 + 300,
+        },
+      ].sort((a, b) => a.timestamp - b.timestamp) as eventWithTime[];
+      await page.evaluate(`events = ${JSON.stringify(styleEvents)}`);
+      const result = await page.evaluate(`
+      const { Replayer } = rrweb;
+      const replayer = new Replayer(events, { showWarning: false });
+      replayer.pause(400);
+      const doc = replayer.iframe.contentDocument;
+      ({
+        added: !!doc.getElementById('after'),
+        rules: [...doc.getElementById('target').sheet.cssRules].map((r) => r.cssText),
+      });
+    `);
+
+      expect(result.added).toBe(true);
+      expect(result.rules).toEqual([
+        '.a { color: red; }',
+        '@media (min-width: 1px) {\n  .b { color: rgb(128, 0, 128); }\n}',
+      ]);
+    },
+  );
 
   it('should apply fast forwarded StyleSheetRules that where added', async () => {
     await page.evaluate(`events = ${JSON.stringify(styleSheetRuleEvents)}`);
@@ -1095,6 +1253,62 @@ describe('replayer', function () {
     await checkCorrectness();
   });
 
+  it('can replay adoptedStyleSheets embedded inline on a mutation add', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetMutationAdd)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    expect(
+      await contentDocument!.evaluate(() => {
+        const host = document.querySelector('#dynamic-icon') as HTMLElement;
+        const svg = host?.shadowRoot?.querySelector('svg') as SVGElement;
+        if (!host || !svg) return null;
+        return {
+          hostWidth: host.getBoundingClientRect().width,
+          svgWidth: svg.getBoundingClientRect().width,
+          sheetCount: host.shadowRoot!.adoptedStyleSheets.length,
+        };
+      }),
+    ).toEqual({
+      hostWidth: 24,
+      svgWidth: 24,
+      sheetCount: 1,
+    });
+  });
+
+  it('applies inline adoptedStyleSheets from mutation adds when seeking with useVirtualDom', async () => {
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetMutationAdd)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { useVirtualDom: true });
+      replayer.pause(500);
+    `);
+    await page.waitForTimeout(300);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    expect(
+      await contentDocument!.evaluate(() => {
+        const host = document.querySelector('#dynamic-icon') as HTMLElement;
+        const svg = host?.shadowRoot?.querySelector('svg') as SVGElement;
+        if (!host || !svg) return null;
+        return {
+          svgWidth: svg.getBoundingClientRect().width,
+          sheetCount: host.shadowRoot!.adoptedStyleSheets.length,
+        };
+      }),
+    ).toEqual({
+      svgWidth: 24,
+      sheetCount: 1,
+    });
+  });
+
   it('reuses the same CSSStyleSheet object when two shadow hosts share a styleId', async () => {
     await page.evaluate(`
       events = ${JSON.stringify(adoptedStyleSheetSharedInSnapshot)};
@@ -1406,7 +1620,7 @@ describe('replayer', function () {
     expect(changedColors).toEqual([newColor, newColor]);
   });
 
-  it('stops resolving queued adds as soon as they stop making progress', async () => {
+  it('inserts adds whose nextId is never recorded along with the nodes depending on them', async () => {
     await page.evaluate(
       `events = ${JSON.stringify(unresolvableMutationEvents)}`,
     );
@@ -1416,21 +1630,66 @@ describe('replayer', function () {
       const replayer = new Replayer(events, { showWarning: false });
       const start = performance.now();
       replayer.pause(200);
+      const doc = replayer.iframe.contentDocument;
       ({
         duration: performance.now() - start,
-        resolvable: Boolean(
-          replayer.iframe.contentDocument.querySelector('#resolvable'),
-        ),
-        unresolvable: replayer.iframe.contentDocument.querySelectorAll(
-          '[id^="unresolvable-"]',
-        ).length,
+        resolvable: Boolean(doc.querySelector('#resolvable')),
+        unresolvable: doc.querySelectorAll('[id^="unresolvable-"]').length,
+        child: Boolean(doc.querySelector('#unresolvable-201 > #child-of-unresolvable')),
+        waiterBeforeTarget:
+          doc.querySelector('#waits-on-unresolvable')?.nextElementSibling?.id,
+        missingParent: Boolean(doc.querySelector('#missing-parent')),
       });
     `);
 
     // the resolve loop used to spin until its 500ms timeout instead of
     // bailing out once the queue stopped shrinking
     expect((result as { duration: number }).duration).toBeLessThan(300);
-    expect(result).toMatchObject({ resolvable: true, unresolvable: 0 });
+    expect(result).toMatchObject({
+      resolvable: true,
+      unresolvable: 5,
+      child: true,
+      waiterBeforeTarget: 'unresolvable-201',
+      missingParent: false,
+    });
+  });
+
+  it('does not insert a second copy when a stuck add for a present node arrives again', async () => {
+    const mutation = unresolvableMutationEvents.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        e.data.source === IncrementalSource.Mutation &&
+        e.data.adds.some((a) => a.nextId === 9999),
+    )!;
+    // a node whose serialized form differs from the one in the mirror is
+    // rebuilt rather than reused, so inserting it would leave two copies
+    const again = {
+      ...mutation,
+      timestamp: mutation.timestamp + 50,
+      data: {
+        ...mutation.data,
+        adds: mutation.data.adds.map((a) => ({
+          ...a,
+          node: {
+            ...a.node,
+            attributes: { ...a.node.attributes, 'data-again': '' },
+          },
+        })),
+      },
+    };
+    await page.evaluate(
+      `events = ${JSON.stringify([...unresolvableMutationEvents, again])}`,
+    );
+
+    const result = await page.evaluate(`
+      const { Replayer } = rrweb;
+      // the virtual dom diff would collapse nodes sharing an id, hiding the copy
+      const replayer = new Replayer(events, { showWarning: false, useVirtualDom: false });
+      replayer.pause(250);
+      replayer.iframe.contentDocument.querySelectorAll('[id^="unresolvable-"]').length;
+    `);
+
+    expect(result).toBe(5);
   });
 
   it('applies a long run of mixed resolvable and stuck mutation events without the 500ms resolve timeout', async () => {

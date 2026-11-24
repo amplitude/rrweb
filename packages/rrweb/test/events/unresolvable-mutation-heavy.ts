@@ -12,7 +12,7 @@ import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
  *   - a sibling whose `nextId` appears later in the same `adds` list
  *   - a child of that delayed node
  *   - a missing parent (dropped, not retried)
- *   - never-serialized `nextId`s (the stall case)
+ *   - never-serialized `nextId`s (the stall case; inserted without the hint)
  */
 export const HEAVY_UNRESOLVABLE_BATCHES = 20;
 export const HEAVY_RESOLVABLE_ROWS = 12;
@@ -209,7 +209,7 @@ export function expectedHeavyUnresolvableDom() {
     delayedWaiters: HEAVY_UNRESOLVABLE_BATCHES,
     delayedChildren: HEAVY_UNRESOLVABLE_BATCHES,
     delayedSiblings: HEAVY_UNRESOLVABLE_BATCHES,
-    neverNext: 0,
+    neverNext: HEAVY_UNRESOLVABLE_BATCHES * HEAVY_UNRESOLVABLE_PER_BATCH,
     missingParent: 0,
   };
 }

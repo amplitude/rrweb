@@ -72,15 +72,15 @@ export type recordOptions<T> = {
   collectFonts?: boolean;
   inlineImages?: boolean;
   /**
-   * When true (default), CSS rules from `adoptedStyleSheets` are serialized
-   * inline in the full snapshot so replay is self-contained even if incremental
-   * AdoptedStyleSheet events are dropped in transit. Set to false if snapshot
-   * size is a concern; the CSS will instead be carried in incremental events.
+   * When true, CSS rules from `adoptedStyleSheets` are serialized inline on
+   * full snapshots and on dynamically added shadow hosts / documents so replay
+   * is self-contained even if incremental AdoptedStyleSheet events are dropped
+   * in transit. Defaults to false because inlined rules can grow snapshot size;
+   * enable for apps that rely heavily on constructable stylesheets (e.g. Lit).
    *
-   * **Warning:** setting this to `false` increases the risk of unstyled shadow
-   * DOM on replay. Shadow-root `adoptedStyleSheets` are emitted via a
-   * `setTimeout(0)` after the snapshot, so if any incremental events are
-   * dropped in transit those styles will be permanently missing from the replay.
+   * When false, CSS is carried only in incremental AdoptedStyleSheet events.
+   * Shadow-root sheets are emitted via `setTimeout(0)` after attach, so dropped
+   * incrementals can leave shadow DOM unstyled on replay.
    */
   captureAdoptedStyleSheets?: boolean;
   plugins?: RecordPlugin[];
@@ -132,6 +132,7 @@ export type observerParam = {
   shadowDomManager: ShadowDomManager;
   canvasManager: CanvasManager;
   processedNodeManager: ProcessedNodeManager;
+  captureAdoptedStyleSheets: boolean;
   ignoreCSSAttributes: Set<string>;
   plugins: Array<{
     observer: (
@@ -168,6 +169,7 @@ export type MutationBufferParam = Pick<
   | 'shadowDomManager'
   | 'canvasManager'
   | 'processedNodeManager'
+  | 'captureAdoptedStyleSheets'
 >;
 
 export type ReplayPlugin = {

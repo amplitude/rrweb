@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import {
   EventType,
   IncrementalSource,
+  MouseInteractions,
   eventWithTime,
   listenerHandler,
   selectionData,
@@ -96,6 +97,51 @@ describe('record', function (this: ISuite) {
       </html>
     `,
   );
+
+  it('passes native interactions to hooks without adding them to recorded data', async () => {
+    const result = await ctx.page.evaluate(() => {
+      const { record } = (window as unknown as IWindow).rrweb;
+      const events: eventWithTime[] = [];
+      const native = new MouseEvent('click', {
+        bubbles: true,
+        ctrlKey: true,
+        detail: 0,
+      });
+      let sameEvent = false;
+      let ctrlKey = false;
+      let detail = -1;
+      const stop = record({
+        emit: (event) => events.push(event),
+        hooks: {
+          mouseInteraction: (_data, event) => {
+            sameEvent = event === native;
+            ctrlKey = event?.ctrlKey ?? false;
+            detail = event?.detail ?? -1;
+          },
+        },
+      });
+      document.querySelector('input')!.dispatchEvent(native);
+      stop?.();
+      return { sameEvent, ctrlKey, detail, events };
+    });
+    expect(result.sameEvent).toBe(true);
+    expect(result.ctrlKey).toBe(true);
+    expect(result.detail).toBe(0);
+    const clicks = result.events.filter(
+      (event) =>
+        event.type === EventType.IncrementalSnapshot &&
+        event.data.source === IncrementalSource.MouseInteraction &&
+        event.data.type === MouseInteractions.Click,
+    );
+    expect(clicks).toHaveLength(1);
+    expect(Object.keys(clicks[0].data).sort()).toEqual([
+      'id',
+      'source',
+      'type',
+      'x',
+      'y',
+    ]);
+  });
 
   it('will only have one full snapshot without checkout config', async () => {
     await ctx.page.evaluate(() => {
@@ -673,6 +719,7 @@ describe('record', function (this: ISuite) {
         const { rrweb, emit } = window as unknown as IWindow;
         rrweb.record({
           emit,
+          captureAdoptedStyleSheets: true,
         });
 
         setTimeout(() => {
@@ -684,6 +731,150 @@ describe('record', function (this: ISuite) {
     });
     await waitForRAF(ctx.page);
     await assertSnapshot(ctx.events);
+  });
+
+  it('inlines adoptedStyleSheets on dynamically added shadow hosts when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          const host = document.createElement('div');
+          host.id = 'dynamic-icon';
+          document.body.appendChild(host);
+          host.attachShadow({ mode: 'open' });
+          const sheet = new CSSStyleSheet();
+          sheet.replaceSync!('svg { width: 24px; height: 24px; }');
+          host.shadowRoot!.adoptedStyleSheets = [sheet];
+          const svg = document.createElementNS(
+            'http://www.w3.org/2000/svg',
+            'svg',
+          );
+          svg.setAttribute('viewBox', '0 0 24 24');
+          host.shadowRoot!.appendChild(svg);
+          resolve(undefined);
+        }, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: { adds?: Array<{ node?: { adoptedStyleSheets?: unknown[] } }> };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]).toMatchObject({
+      rules: [{ rule: 'svg { width: 24px; height: 24px; }', index: 0 }],
+    });
+  });
+
+  it('dedupes shared adoptedStyleSheets between full snapshot and mutation add when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const sharedSheet = new CSSStyleSheet();
+        sharedSheet.replaceSync!('.icon { width: 16px; }');
+
+        const existingHost = document.createElement('div');
+        existingHost.id = 'existing-icon';
+        document.body.appendChild(existingHost);
+        existingHost.attachShadow({ mode: 'open' });
+        existingHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          rrweb.record.takeFullSnapshot(true);
+          setTimeout(() => {
+            const newHost = document.createElement('div');
+            newHost.id = 'new-icon';
+            document.body.appendChild(newHost);
+            newHost.attachShadow({ mode: 'open' });
+            newHost.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+            resolve(undefined);
+          }, 10);
+        }, 10);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: {
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
+      };
+    };
+    const addedHost = mutation?.data.adds?.find(
+      (add) => add.node?.adoptedStyleSheets?.length,
+    );
+    expect(addedHost?.node?.adoptedStyleSheets?.[0]?.rules).toHaveLength(0);
+  });
+
+  it('dedupes shared adoptedStyleSheets across mutation adds when captureAdoptedStyleSheets is true', async () => {
+    await ctx.page.evaluate(() => {
+      return new Promise((resolve) => {
+        document.body.innerHTML = '';
+
+        const { rrweb, emit } = window as unknown as IWindow;
+        rrweb.record({ emit, captureAdoptedStyleSheets: true });
+
+        setTimeout(() => {
+          const sharedSheet = new CSSStyleSheet();
+          sharedSheet.replaceSync!('.icon { width: 16px; }');
+
+          for (let i = 0; i < 2; i++) {
+            const host = document.createElement('div');
+            host.className = 'icon-host';
+            document.body.appendChild(host);
+            host.attachShadow({ mode: 'open' });
+            host.shadowRoot!.adoptedStyleSheets = [sharedSheet];
+          }
+          resolve(undefined);
+        }, 50);
+      });
+    });
+    await waitForRAF(ctx.page);
+    await ctx.page.waitForTimeout(100);
+
+    const mutation = ctx.events.find(
+      (e) =>
+        e.type === EventType.IncrementalSnapshot &&
+        (e.data as { source?: number }).source === IncrementalSource.Mutation,
+    ) as eventWithTime & {
+      data: {
+        adds?: Array<{
+          node?: { adoptedStyleSheets?: { rules: unknown[] }[] };
+        }>;
+      };
+    };
+    const hostsWithSheets =
+      mutation?.data.adds?.filter(
+        (add) => add.node?.adoptedStyleSheets?.length,
+      ) ?? [];
+    expect(hostsWithSheets).toHaveLength(2);
+    const [first, second] = hostsWithSheets.map(
+      (add) => add.node!.adoptedStyleSheets![0],
+    );
+    expect(first.styleId).toBe(second.styleId);
+    expect(first.rules).toHaveLength(1);
+    expect(second.rules).toHaveLength(0);
   });
 
   it('does not inline adoptedStyleSheets when captureAdoptedStyleSheets is false', async () => {
@@ -1134,5 +1325,98 @@ describe('record iframes', function (this: ISuite) {
     expect(addRuleCount).toEqual(2);
     expect(removeRuleCount).toEqual(2);
     await assertSnapshot(ctx.events);
+  });
+
+  it('does not serialize or observe an iframe blocked by class', async () => {
+    const events = await ctx.page.evaluate(async () => {
+      const recorded: eventWithTime[] = [];
+      const { record } = (window as unknown as IWindow).rrweb;
+      record({
+        emit: (event) => {
+          recorded.push(event);
+        },
+      });
+
+      const blocked = document.createElement('iframe');
+      blocked.className = 'rr-block';
+      blocked.setAttribute('sandbox', 'allow-same-origin');
+      const loaded = new Promise<void>((resolve) => {
+        blocked.addEventListener('load', () => resolve());
+      });
+      blocked.srcdoc = '<p>Email body</p>';
+      document.body.append(blocked);
+      await loaded;
+
+      const doc = blocked.contentDocument!;
+      const leaked = doc.createElement('p');
+      leaked.textContent = 'late mutation';
+      doc.body.append(leaked);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      return recorded;
+    });
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).toContain('Mysterious Button');
+    expect(serialized).not.toContain('Email body');
+    expect(serialized).not.toContain('late mutation');
+    expect(
+      events.filter(
+        (event) =>
+          event.type === EventType.IncrementalSnapshot &&
+          event.data.source === IncrementalSource.Mutation &&
+          'isAttachIframe' in event.data &&
+          event.data.isAttachIframe === true,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('does not serialize or observe iframes blocked by selector', async () => {
+    const events = await ctx.page.evaluate(async () => {
+      const recorded: eventWithTime[] = [];
+      const { record } = (window as unknown as IWindow).rrweb;
+      record({
+        emit: (event) => {
+          recorded.push(event);
+        },
+        blockSelector: 'iframe[srcdoc]',
+      });
+
+      const blocked = document.createElement('iframe');
+      blocked.setAttribute('sandbox', 'allow-same-origin');
+      const loaded = new Promise<void>((resolve) => {
+        blocked.addEventListener('load', () => resolve());
+      });
+      blocked.srcdoc = '<p>Email body</p>';
+      document.body.append(blocked);
+      await loaded;
+
+      document.querySelectorAll('iframe').forEach((node) => {
+        const doc = (node as HTMLIFrameElement).contentDocument;
+        if (!doc?.body) return;
+        const leaked = doc.createElement('p');
+        leaked.textContent = 'late mutation';
+        doc.body.append(leaked);
+      });
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      return recorded;
+    });
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain('Mysterious Button');
+    expect(serialized).not.toContain('Email body');
+    expect(serialized).not.toContain('late mutation');
+    expect(
+      events.filter(
+        (event) =>
+          event.type === EventType.IncrementalSnapshot &&
+          event.data.source === IncrementalSource.Mutation &&
+          'isAttachIframe' in event.data &&
+          event.data.isAttachIframe === true,
+      ),
+    ).toHaveLength(0);
   });
 });

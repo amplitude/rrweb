@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.7 (2026-11-19)</small>
+
+- ci: pin release and style check runners to ubuntu-22.04 ([3f1df11](https://github.com/amplitude/rrweb/commit/3f1df11))
+- ci: pin to ubuntu-24.04, the image ubuntu-latest used before ([1ae94e7](https://github.com/amplitude/rrweb/commit/1ae94e7))
+- test(replay): cover unresolved style events on the virtual DOM path ([2f05d06](https://github.com/amplitude/rrweb/commit/2f05d06))
+- fix(replay): keep CSS-in-JS styles intact when seeking ([ae8753f](https://github.com/amplitude/rrweb/commit/ae8753f))
+- fix(rrdom): keep CSSOM rules in shadow trees of moved hosts ([a13124e](https://github.com/amplitude/rrweb/commit/a13124e))
+- fix(rrdom): keep CSSOM rules of SVG style elements on move ([bbf3b66](https://github.com/amplitude/rrweb/commit/bbf3b66))
+- fix(rrdom): only restore CSSOM of style elements the recording did not re-insert ([18e93f5](https://github.com/amplitude/rrweb/commit/18e93f5))
+
+## <small>2.1.6 (2026-11-05)</small>
+
+- fix(replay): insert adds whose nextId never arrives instead of dropping them ([69f90ca](https://github.com/amplitude/rrweb/commit/69f90ca))
+- fix(snapshot): do not observe blocked iframe documents (#144) ([56da042](https://github.com/amplitude/rrweb/commit/56da042)), closes [#144](https://github.com/amplitude/rrweb/issues/144)
+
+## <small>2.1.5 (2026-10-22)</small>
+
+- feat(record): expose native interactions to recorder hooks (#142) ([170c07a](https://github.com/amplitude/rrweb/commit/170c07a)), closes [#142](https://github.com/amplitude/rrweb/issues/142)
+- fix: restore incremental adoptedStyleSheet emit and correct SR-4938 fixture ([3fc4121](https://github.com/amplitude/rrweb/commit/3fc4121))
+- fix(replay): narrow adoptedStyleSheets access on mutation nodes ([e1fd5b1](https://github.com/amplitude/rrweb/commit/e1fd5b1))
+- fix(replay): remove unnecessary type assertions for eslint ([37ba722](https://github.com/amplitude/rrweb/commit/37ba722))
+- fix(snapshot): forward inlined styleId dedupe set into iframe snapshots ([443c90f](https://github.com/amplitude/rrweb/commit/443c90f))
+- Apply formatting changes ([761ea40](https://github.com/amplitude/rrweb/commit/761ea40))
+- Apply formatting changes ([7fc4256](https://github.com/amplitude/rrweb/commit/7fc4256))
+- fix(record,replay): inline adoptedStyleSheets on mutation add (SR-4938) ([41d306d](https://github.com/amplitude/rrweb/commit/41d306d))
+- fix(record,replay): opt-in captureAdoptedStyleSheets with mutation dedupe ([8ffdd4a](https://github.com/amplitude/rrweb/commit/8ffdd4a))
+- fix(record,replay): shared adoptedStyleSheet rule dedupe across buffers ([cb2e59c](https://github.com/amplitude/rrweb/commit/cb2e59c))
+- test(replay): stabilize hover image snapshot on CI ([747df8d](https://github.com/amplitude/rrweb/commit/747df8d))
+
 ## <small>2.1.4 (2026-09-24)</small>
 
 - fix(replay): stop the resolve queue loop when it stops making progress (#138) ([ca08fcf](https://github.com/amplitude/rrweb/commit/ca08fcf)), closes [#138](https://github.com/amplitude/rrweb/issues/138)

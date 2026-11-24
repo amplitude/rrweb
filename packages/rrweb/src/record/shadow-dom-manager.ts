@@ -74,7 +74,8 @@ export class ShadowDomManager {
         mirror: this.mirror,
       }),
     );
-    // Defer this to avoid adoptedStyleSheet events being created before the full snapshot is created or attachShadow action is recorded.
+    // Defer observer setup to avoid adoptedStyleSheet events being created
+    // before the full snapshot is created or attachShadow action is recorded.
     setTimeout(() => {
       if (
         shadowRoot.adoptedStyleSheets &&
