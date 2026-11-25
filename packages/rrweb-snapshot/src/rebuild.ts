@@ -7,7 +7,12 @@ import {
   type legacyAttributes,
 } from '@amplitude/rrweb-types';
 import { type tagMap, type BuildCache } from './types';
-import { isElement, Mirror, isNodeMetaEqual } from './utils';
+import {
+  isElement,
+  Mirror,
+  isNodeMetaEqual,
+  extractFileExtension,
+} from './utils';
 import postcss from 'postcss';
 
 // Tag names that should not be defined as custom elements
@@ -112,16 +117,69 @@ export function applyCssSplits(
     // unexpected: remerge the last two so that we don't discard any css
     cssTextSplits.splice(-2, 2, cssTextSplits.slice(-2).join(''));
   }
+  // Adapt the stylesheet as a whole. Adapting each split separately hands
+  // postcss fragments that are not valid CSS on their own (a split can land
+  // mid-selector or inside a string), which throws CssSyntaxError.
+  // Upstream #1600 / #1692 / #1734.
+  let adaptedCss = '';
+  if (hackCss) {
+    adaptedCss = adaptCssForReplay(cssTextSplits.join(''), cache);
+  }
+  let startIndex = 0;
+  let errorOffset = -1;
   for (let i = 0; i < childTextNodes.length; i++) {
-    const childTextNode = childTextNodes[i];
-    const cssTextSection = cssTextSplits[i];
-    if (childTextNode && cssTextSection) {
-      // id will be assigned when these child nodes are
-      // iterated over in buildNodeWithSN
-      childTextNode.textContent = hackCss
-        ? adaptCssForReplay(cssTextSection, cache)
-        : cssTextSection;
+    if (i === cssTextSplits.length) {
+      break;
     }
+    const childTextNode = childTextNodes[i];
+    let cssTextSection = cssTextSplits[i];
+    const nextTextSection =
+      i < cssTextSplits.length - 1 ? cssTextSplits[i + 1] : null;
+    if (hackCss && nextTextSection) {
+      let endIndex = startIndex;
+      let endSearch = nextTextSection.length;
+
+      // don't do hundreds of searches, in case a mismatch
+      // is caused close to start of string
+      endSearch = Math.min(endSearch, 30);
+
+      let found = false;
+      for (; endSearch > 2; endSearch--) {
+        const searchBit = nextTextSection.substring(0, endSearch);
+        const searchIndex = adaptedCss.substring(startIndex).indexOf(searchBit);
+        found = searchIndex !== -1;
+        if (found) {
+          endIndex += searchIndex;
+          break;
+        }
+      }
+      if (!found) {
+        // something went wrong, put a similar sized chunk in the right place
+        endIndex += cssTextSection.length;
+      }
+      cssTextSection = adaptedCss.substring(startIndex, endIndex);
+      startIndex = endIndex;
+    } else if (hackCss) {
+      cssTextSection = adaptedCss.substring(startIndex);
+    }
+    if (errorOffset !== -1) {
+      // #1920 correction: a '0px' normalization mismatch shifted this split
+      cssTextSection = cssTextSection.substring(errorOffset);
+    }
+    if (
+      nextTextSection &&
+      (errorOffset !== -1 ||
+        (cssTextSection.endsWith('0p') && nextTextSection.startsWith('x')))
+    ) {
+      errorOffset = nextTextSection.indexOf('}');
+      if (errorOffset !== -1) {
+        errorOffset += 1; // consume the bracket
+        cssTextSection += nextTextSection.substring(0, errorOffset);
+      }
+    }
+    // id will be assigned when these child nodes are
+    // iterated over in buildNodeWithSN
+    childTextNode.textContent = cssTextSection;
   }
 }
 
@@ -276,16 +334,15 @@ function buildNode(
             continue;
           } else if (
             tagName === 'link' &&
-            (n.attributes.rel === 'preload' ||
-              n.attributes.rel === 'modulepreload') &&
-            n.attributes.as === 'script'
+            ((n.attributes.rel === 'preload' && n.attributes.as === 'script') ||
+              n.attributes.rel === 'modulepreload')
           ) {
             // ignore
           } else if (
             tagName === 'link' &&
             n.attributes.rel === 'prefetch' &&
             typeof n.attributes.href === 'string' &&
-            n.attributes.href.endsWith('.js')
+            extractFileExtension(n.attributes.href) === 'js'
           ) {
             // ignore
           } else if (
@@ -400,6 +457,10 @@ function buildNode(
             node.shadowRoot.removeChild(node.shadowRoot.firstChild);
           }
         }
+      }
+      // Keep the viewer's saved form data out of the replay. #1771
+      if (tagName === 'input' || tagName === 'textarea') {
+        node.setAttribute('autocomplete', 'off');
       }
       return node;
     }

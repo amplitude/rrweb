@@ -24,6 +24,19 @@ const webRTCRecordPlugin = new RRWebPluginCanvasWebRTCRecord({
   },
 });
 
+Same-origin canvas commands work without extra configuration. Cross-origin
+commands are ignored unless `recordCrossOriginIframes: true` is set on the
+plugin in both the recording root page and each participating iframe. This is
+separate from rrweb's `recordCrossOriginIframes` record option.
+
+Enabling the plugin option accepts commands from any origin. It does not
+authenticate the embedding page. A page with this option enabled must restrict
+embedding to trusted origins, for example with a
+`Content-Security-Policy: frame-ancestors` response header. Leave the option
+disabled if the page may be embedded by untrusted sites. Messages from opaque
+origins, such as sandboxed frames without `allow-same-origin`, also require
+the option.
+
 rrweb.record({
   emit: (event) => {
     // send these events to the `replayer.addEvent(event)`, how you do that is up to you

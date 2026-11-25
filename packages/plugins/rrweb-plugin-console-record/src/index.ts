@@ -3,7 +3,7 @@ import type {
   RecordPlugin,
   listenerHandler,
 } from '@amplitude/rrweb-types';
-import { utils } from '@amplitude/rrweb';
+import { patch } from '@amplitude/rrweb-utils';
 import { ErrorStackParser, StackFrame } from './error-stack-parser';
 import { stringify } from './stringify';
 
@@ -187,12 +187,12 @@ function initLogObserver(
       };
     }
     // replace the logger.{level}. return a restore function
-    return utils.patch(
+    return patch(
       _logger,
       level,
       (original: (...args: Array<unknown>) => void) => {
         return (...args: Array<unknown>) => {
-          original.apply(this, args);
+          original.apply(_logger, args);
 
           if (level === 'assert' && !!args[0]) {
             // assert does not log if the first argument evaluates to true
@@ -234,7 +234,7 @@ function initLogObserver(
               });
             }
           } catch (error) {
-            original('rrweb logger error:', error, ...args);
+            original.apply(_logger, ['rrweb logger error:', error, ...args]);
           } finally {
             inStack = false;
           }

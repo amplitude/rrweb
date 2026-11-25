@@ -44,6 +44,9 @@
     "url": "https://github.com/rrweb-io/rrweb/issues"
   },
   "homepage": "https://github.com/rrweb-io/rrweb#readme",
+  "dependencies": {
+    "@amplitude/rrweb-utils": "workspace:^"
+  },
   "devDependencies": {
     "@amplitude/rrweb": "workspace:^",
     "@amplitude/rrweb-types": "workspace:^",
