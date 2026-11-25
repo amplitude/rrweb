@@ -17,6 +17,7 @@ import adoptedStyleSheetSharedWithIncrementals from './events/adopted-style-shee
 import adoptedStyleSheetNestedSharedInSnapshot from './events/adopted-style-sheet-nested-shared-in-snapshot';
 import adoptedStyleSheetModification from './events/adopted-style-sheet-modification';
 import adoptedStyleSheetMutationAdd from './events/adopted-style-sheet-mutation-add';
+import adoptedStyleSheetUnresolvedHost from './events/adopted-style-sheet-unresolved-host';
 import canvasInIframe from './events/canvas-in-iframe';
 import documentReplacementEvents from './events/document-replacement';
 import iframeEvents from './events/iframe';
@@ -1250,6 +1251,72 @@ describe('replayer', function () {
     await page.evaluate('replayer.play(0);');
     await waitForRAF(page);
     await page.evaluate('replayer.pause(300);');
+    await checkCorrectness();
+  });
+
+  it('keeps shared adoptedStyleSheet rules whose first host is unresolved', async () => {
+    // The rules for styleIds 1 and 2 arrive on events for hosts the replayer
+    // can't resolve (id -1, and an id that never appears). Later hosts
+    // reference those styleIds without rules, so the sheets must still be
+    // registered when the first event's host is missing.
+    await page.evaluate(`
+      events = ${JSON.stringify(adoptedStyleSheetUnresolvedHost)};
+      const { Replayer } = rrweb;
+      var replayer = new Replayer(events, { showDebug: true });
+      replayer.play();
+    `);
+    await page.waitForTimeout(700);
+    const iframe = await page.$('iframe');
+    const contentDocument = await iframe!.contentFrame()!;
+
+    const expected = {
+      sheets: 2,
+      color: 'rgb(255, 0, 0)',
+      fontSize: '24px',
+      fontWeight: '700',
+    };
+    const checkCorrectness = async () => {
+      for (const hostId of ['#shadow-host-1', '#shadow-host-2']) {
+        const style = await contentDocument!.evaluate((selector) => {
+          const root = document.querySelector(selector)!.shadowRoot!;
+          const computed = window.getComputedStyle(root.querySelector('span')!);
+          return {
+            sheets: root.adoptedStyleSheets.length,
+            color: computed.color,
+            fontSize: computed.fontSize,
+            fontWeight: computed.fontWeight,
+          };
+        }, hostId);
+        expect(style).toEqual(expected);
+      }
+
+      // Hosts in the nested iframe can't adopt sheets built in the top
+      // replay document, so they must get their own copies, not throw.
+      // #iframe-host-inline carries the sheets on its mutation add.
+      for (const hostId of ['#iframe-host', '#iframe-host-inline']) {
+        const nested = await contentDocument!.evaluate((selector) => {
+          const doc = (document.querySelector('#nested') as HTMLIFrameElement)
+            .contentDocument!;
+          const root = doc.querySelector(selector)!.shadowRoot!;
+          const computed = doc.defaultView!.getComputedStyle(
+            root.querySelector('span')!,
+          );
+          return {
+            sheets: root.adoptedStyleSheets.length,
+            color: computed.color,
+            fontSize: computed.fontSize,
+            fontWeight: computed.fontWeight,
+          };
+        }, hostId);
+        expect(nested).toEqual(expected);
+      }
+    };
+    await checkCorrectness();
+
+    // Same result when the events are applied synchronously on a seek.
+    await page.evaluate('replayer.play(0);');
+    await waitForRAF(page);
+    await page.evaluate('replayer.pause(600);');
     await checkCorrectness();
   });
 
