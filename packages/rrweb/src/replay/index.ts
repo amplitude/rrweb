@@ -2373,10 +2373,12 @@ export class Replayer {
       styleSheet =
         (this.mirror.getNode(data.id) as HTMLStyleElement)?.sheet || null;
     if (!styleSheet) return;
-    if (data.source === IncrementalSource.StyleSheetRule)
-      this.applyStyleSheetRule(data, styleSheet);
-    else if (data.source === IncrementalSource.StyleDeclaration)
-      this.applyStyleDeclaration(data, styleSheet);
+    for (const sheet of this.sheetAndCopies(styleSheet)) {
+      if (data.source === IncrementalSource.StyleSheetRule)
+        this.applyStyleSheetRule(data, sheet);
+      else if (data.source === IncrementalSource.StyleDeclaration)
+        this.applyStyleDeclaration(data, sheet);
+    }
   }
 
   private applyStyleSheetRule(
@@ -2539,12 +2541,14 @@ export class Replayer {
         // onto the already-registered sheet so the shared instance is fully
         // populated regardless of which host's afterAppend fires first.
         if (rules.length) {
-          this.applyStyleSheetRule(
-            { source: IncrementalSource.StyleSheetRule, adds: rules },
-            existing,
-          );
+          for (const sheet of this.sheetAndCopies(existing)) {
+            this.applyStyleSheetRule(
+              { source: IncrementalSource.StyleSheetRule, adds: rules },
+              sheet,
+            );
+          }
         }
-        sheets.push(existing);
+        sheets.push(this.sheetForWindow(existing, hostWindow));
         continue;
       }
       try {
@@ -2562,9 +2566,15 @@ export class Replayer {
       }
     }
 
-    if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
-    else if (node.nodeName === '#document')
-      (node as Document).adoptedStyleSheets = sheets;
+    try {
+      if (hasShadowRoot(node)) node.shadowRoot.adoptedStyleSheets = sheets;
+      else if (node.nodeName === '#document')
+        (node as Document).adoptedStyleSheets = sheets;
+    } catch (e) {
+      // A constructed sheet from another document throws NotAllowedError.
+      // Leave the host unstyled rather than abort playback.
+      this.warn('Failed to adopt stylesheets', e);
+    }
   }
 
   private applyAdoptedStyleSheet(data: adoptedStyleSheetData) {
@@ -2658,6 +2668,7 @@ export class Replayer {
    * Return a sheet the given window's documents can adopt. Only sheets built
    * for an unresolved host can belong to the wrong window. They get a copy
    * of their current rules built in the target window, cached per window.
+   * Later rule edits reach the copies through sheetAndCopies.
    */
   private sheetForWindow(
     sheet: CSSStyleSheet,
@@ -2686,6 +2697,15 @@ export class Replayer {
     } catch (e) {
       return sheet;
     }
+  }
+
+  /**
+   * A fallback sheet and the copies made of it for other windows. Rule and
+   * declaration edits must reach all of them, or the copies go stale.
+   */
+  private sheetAndCopies(sheet: CSSStyleSheet): CSSStyleSheet[] {
+    const copies = this.fallbackSheetCopies.get(sheet);
+    return copies ? [sheet, ...copies.values()] : [sheet];
   }
 
   private legacy_resolveMissingNode(

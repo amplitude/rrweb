@@ -1265,10 +1265,16 @@ describe('replayer', function () {
       var replayer = new Replayer(events, { showDebug: true });
       replayer.play();
     `);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     const iframe = await page.$('iframe');
     const contentDocument = await iframe!.contentFrame()!;
 
+    const expected = {
+      sheets: 2,
+      color: 'rgb(255, 0, 0)',
+      fontSize: '24px',
+      fontWeight: '700',
+    };
     const checkCorrectness = async () => {
       for (const hostId of ['#shadow-host-1', '#shadow-host-2']) {
         const style = await contentDocument!.evaluate((selector) => {
@@ -1278,42 +1284,39 @@ describe('replayer', function () {
             sheets: root.adoptedStyleSheets.length,
             color: computed.color,
             fontSize: computed.fontSize,
+            fontWeight: computed.fontWeight,
           };
         }, hostId);
-        expect(style).toEqual({
-          sheets: 2,
-          color: 'rgb(255, 0, 0)',
-          fontSize: '24px',
-        });
+        expect(style).toEqual(expected);
       }
 
-      // The host in the nested iframe can't adopt sheets built in the top
-      // replay document, so it must get its own copies, not throw.
-      const nested = await contentDocument!.evaluate(() => {
-        const doc = (document.querySelector('#nested') as HTMLIFrameElement)
-          .contentDocument!;
-        const root = doc.querySelector('#iframe-host')!.shadowRoot!;
-        const computed = doc.defaultView!.getComputedStyle(
-          root.querySelector('span')!,
-        );
-        return {
-          sheets: root.adoptedStyleSheets.length,
-          color: computed.color,
-          fontSize: computed.fontSize,
-        };
-      });
-      expect(nested).toEqual({
-        sheets: 2,
-        color: 'rgb(255, 0, 0)',
-        fontSize: '24px',
-      });
+      // Hosts in the nested iframe can't adopt sheets built in the top
+      // replay document, so they must get their own copies, not throw.
+      // #iframe-host-inline carries the sheets on its mutation add.
+      for (const hostId of ['#iframe-host', '#iframe-host-inline']) {
+        const nested = await contentDocument!.evaluate((selector) => {
+          const doc = (document.querySelector('#nested') as HTMLIFrameElement)
+            .contentDocument!;
+          const root = doc.querySelector(selector)!.shadowRoot!;
+          const computed = doc.defaultView!.getComputedStyle(
+            root.querySelector('span')!,
+          );
+          return {
+            sheets: root.adoptedStyleSheets.length,
+            color: computed.color,
+            fontSize: computed.fontSize,
+            fontWeight: computed.fontWeight,
+          };
+        }, hostId);
+        expect(nested).toEqual(expected);
+      }
     };
     await checkCorrectness();
 
     // Same result when the events are applied synchronously on a seek.
     await page.evaluate('replayer.play(0);');
     await waitForRAF(page);
-    await page.evaluate('replayer.pause(500);');
+    await page.evaluate('replayer.pause(600);');
     await checkCorrectness();
   });
 

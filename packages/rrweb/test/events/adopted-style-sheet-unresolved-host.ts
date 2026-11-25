@@ -10,8 +10,11 @@ import { EventType, IncrementalSource } from '@amplitude/rrweb-types';
  * Two variants of the unresolved host are covered: styleId 1 comes with
  * `id: -1`, and styleId 2 comes with an id that never appears in the stream.
  *
- * A third host lives in a nested iframe. The replayer builds those sheets in
- * the top replay document, which the iframe's document can't adopt directly.
+ * Two more hosts live in a nested iframe. The replayer builds those sheets
+ * in the top replay document, which the iframe's document can't adopt
+ * directly. One adopts through an AdoptedStyleSheet event, the other carries
+ * the sheets inline on its mutation add. A later StyleSheetRule edit to
+ * styleId 1 must reach every host, including the ones that got copies.
  */
 const now = Date.now();
 
@@ -166,6 +169,14 @@ const events: eventWithTime[] = [
                         ...shadowHost(50, 'iframe-host'),
                         rootId: 40,
                       },
+                      {
+                        ...shadowHost(60, 'iframe-host-inline'),
+                        adoptedStyleSheets: [
+                          { styleId: 1, rules: [] },
+                          { styleId: 2, rules: [] },
+                        ],
+                        rootId: 40,
+                      },
                     ],
                     rootId: 40,
                     id: 43,
@@ -195,6 +206,15 @@ const events: eventWithTime[] = [
       styleIds: [1, 2],
     },
     timestamp: now + 400,
+  },
+  {
+    type: EventType.IncrementalSnapshot,
+    data: {
+      source: IncrementalSource.StyleSheetRule,
+      styleId: 1,
+      adds: [{ rule: 'span { font-weight: 700; }', index: 1 }],
+    },
+    timestamp: now + 450,
   },
 ];
 
