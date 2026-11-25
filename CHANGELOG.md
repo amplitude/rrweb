@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## <small>2.1.8 (2026-11-25)</small>
+
+- fix(record): apply maskAttributeFn to nodes added after the full snapshot (#147) ([b7aefa0](https://github.com/amplitude/rrweb/commit/b7aefa0)), closes [#147](https://github.com/amplitude/rrweb/issues/147)
+
 ## <small>2.1.7 (2026-11-19)</small>
 
 - ci: pin release and style check runners to ubuntu-22.04 ([3f1df11](https://github.com/amplitude/rrweb/commit/3f1df11))
