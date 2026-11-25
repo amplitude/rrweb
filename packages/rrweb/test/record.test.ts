@@ -1039,6 +1039,67 @@ describe('record', function (this: ISuite) {
     await assertSnapshot(ctx.events);
   });
 
+  describe('maskAttributeFn on nodes added after the full snapshot', () => {
+    it.each([
+      ['masks', 'mask'],
+      ['omits', 'omit'],
+    ] as const)(
+      '%s sensitive attributes on an added parent and its descendants',
+      async (_label, mode) => {
+        await ctx.page.evaluate((mode) => {
+          const { record } = (window as unknown as IWindow).rrweb;
+          record({
+            emit: (window as unknown as IWindow).emit,
+            maskAttributeFn: (
+              key: string,
+              value: string,
+              element: HTMLElement,
+            ) => {
+              if (key !== 'title' && key !== 'aria-label') return value;
+              if (element.tagName !== 'DIV' && element.tagName !== 'BUTTON') {
+                return value;
+              }
+              return mode === 'omit' ? null : value.replace(/\S/g, '*');
+            },
+          });
+
+          setTimeout(() => {
+            const parent = document.createElement('div');
+            parent.setAttribute('title', 'Jane Member');
+            parent.setAttribute('data-keep', 'visible');
+            const child = document.createElement('button');
+            child.setAttribute('aria-label', 'John Member');
+            child.setAttribute('data-keep', 'visible-child');
+            parent.appendChild(child);
+            document.body.appendChild(parent);
+          }, 0);
+        }, mode);
+        await ctx.page.waitForTimeout(50);
+        await waitForRAF(ctx.page);
+
+        const mutationEvents = ctx.events.filter(
+          (e) =>
+            e.type === EventType.IncrementalSnapshot &&
+            e.data.source === IncrementalSource.Mutation,
+        );
+        expect(mutationEvents.length).toBeGreaterThan(0);
+
+        const serialized = JSON.stringify(mutationEvents);
+        expect(serialized).not.toContain('Jane');
+        expect(serialized).not.toContain('John');
+        expect(serialized).toContain('"data-keep":"visible"');
+        expect(serialized).toContain('"data-keep":"visible-child"');
+        if (mode === 'mask') {
+          expect(serialized).toContain('"title":"****');
+          expect(serialized).toContain('"aria-label":"****');
+        } else {
+          expect(serialized).not.toContain('"title"');
+          expect(serialized).not.toContain('"aria-label"');
+        }
+      },
+    );
+  });
+
   describe('loading stylesheets', () => {
     let server: Server;
     let serverURL: string;
